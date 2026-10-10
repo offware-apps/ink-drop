@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
@@ -73,6 +74,7 @@ func Build(b Book, doc io.Reader) ([]byte, error) {
 		setAttr(img, "src", name)
 		return true
 	})
+	links(body)
 	var text bytes.Buffer
 	for c := body.FirstChild; c != nil; c = c.NextSibling {
 		if err := html.Render(&text, c); err != nil {
@@ -94,7 +96,7 @@ var dropped = map[atom.Atom]bool{
 	atom.Xmp: true, atom.Plaintext: true,
 }
 
-var keptAttrs = map[string]bool{"href": true, "src": true, "alt": true, "title": true, "colspan": true, "rowspan": true, "lang": true}
+var keptAttrs = map[string]bool{"id": true, "href": true, "src": true, "alt": true, "title": true, "colspan": true, "rowspan": true, "lang": true}
 
 // clean strips n in place down to markup valid as XHTML. keepImg rewrites an
 // img and reports whether to keep it.
@@ -134,6 +136,62 @@ func clean(n *html.Node, keepImg func(*html.Node) bool) {
 		}
 		c = next
 	}
+}
+
+// links keeps each id that is a valid XML name and the first of its value,
+// then unlinks every in-page link whose target is gone, so footnotes still work.
+func links(body *html.Node) {
+	ids := map[string]bool{}
+	walk(body, func(n *html.Node) {
+		keep := n.Attr[:0]
+		for _, a := range n.Attr {
+			if a.Key == "id" {
+				if !xmlName(a.Val) || ids[a.Val] {
+					continue
+				}
+				ids[a.Val] = true
+			}
+			keep = append(keep, a)
+		}
+		n.Attr = keep
+	})
+	walk(body, func(n *html.Node) {
+		frag, ok := strings.CutPrefix(attr(n, "href"), "#")
+		if !ok {
+			return
+		}
+		if f, err := url.PathUnescape(frag); err == nil && ids[f] {
+			setAttr(n, "href", "#"+f)
+			return
+		}
+		keep := n.Attr[:0]
+		for _, a := range n.Attr {
+			if a.Key != "href" {
+				keep = append(keep, a)
+			}
+		}
+		n.Attr = keep
+	})
+}
+
+func walk(n *html.Node, fn func(*html.Node)) {
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == html.ElementNode {
+			fn(c)
+			walk(c, fn)
+		}
+	}
+}
+
+// xmlName reports whether s can be an XML id: a letter or underscore, then
+// letters, digits, hyphens, underscores and dots.
+func xmlName(s string) bool {
+	for i, r := range s {
+		if !(unicode.IsLetter(r) || r == '_' || i > 0 && (unicode.IsDigit(r) || r == '-' || r == '.')) {
+			return false
+		}
+	}
+	return s != ""
 }
 
 func safeHref(v string) bool {

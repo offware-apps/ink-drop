@@ -17,7 +17,9 @@ const doc = `<!DOCTYPE html><html lang="fr"><head><title>x</title></head><body>
 <script>alert(1)</script><iframe src="https://example.org"></iframe><form><input></form>
 <o:p>gardé</o:p><br>
 <img src="` + pixel + `" alt="un"><img src="` + pixel + `" alt="deux"><img src="https://example.org/remote.png">
-<!-- note --></body></html>`
+<p id="note-1">une note</p><p id="note-1">doublon</p><p id="1bad">x</p><p id="Réf">y</p>
+<a href="#note-1">vers</a> <a href="#missing">perdu</a> <a href="#R%C3%A9f">réf</a>
+<!-- commentaire --></body></html>`
 
 func TestBuild(t *testing.T) {
 	b, err := Build(Book{Title: "Un <titre> & co", Source: "https://example.org/post?a=1&b=2", Modified: time.Date(2026, 10, 10, 9, 0, 0, 0, time.UTC)}, strings.NewReader(doc))
@@ -49,7 +51,7 @@ func TestBuild(t *testing.T) {
 		}
 	}
 	text := files["OEBPS/text.xhtml"]
-	for _, gone := range []string{"<script", "alert", "<iframe", "<form", "<input", "onclick", "style=", "o:p", "remote.png", "note", "\x0c"} {
+	for _, gone := range []string{"<script", "alert", "<iframe", "<form", "<input", "onclick", "style=", "o:p", "remote.png", "commentaire", "\x0c"} {
 		if strings.Contains(text, gone) {
 			t.Errorf("text.xhtml still holds %q", gone)
 		}
@@ -58,6 +60,9 @@ func TestBuild(t *testing.T) {
 		if !strings.Contains(text, kept) {
 			t.Errorf("text.xhtml lost %q:\n%s", kept, text)
 		}
+	}
+	if strings.Count(text, `id="note-1"`) != 1 || strings.Contains(text, `id="1bad"`) || !strings.Contains(text, `<a href="#note-1">`) || !strings.Contains(text, "<a>perdu</a>") || !strings.Contains(text, `<a href="#Réf">`) {
+		t.Errorf("ids or in-page links not repaired:\n%s", text)
 	}
 	if _, ok := files["OEBPS/images/img-001.png"]; !ok || len(z.File) != 6 {
 		t.Errorf("want one deduplicated image among 6 entries, got %d", len(z.File))
