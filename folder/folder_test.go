@@ -21,6 +21,9 @@ func TestPutGet(t *testing.T) {
 	if m.File != "article.epub" || m.Source != "https://example.org/a" || !m.Fetched.Equal(at) || m.Schema != Schema {
 		t.Fatalf("got %+v", m)
 	}
+	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o644 {
+		t.Fatalf("document mode %v, %v", fi.Mode(), err)
+	}
 	entries, _ := os.ReadDir(dir)
 	if len(entries) != 2 {
 		t.Fatalf("want the document and %s alone, got %d entries", SidecarDir, len(entries))

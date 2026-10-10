@@ -78,6 +78,11 @@ func writeAtomic(path string, data []byte) error {
 		return err
 	}
 	defer os.Remove(f.Name())
+	// CreateTemp makes the file private; a library is read by sync tools too.
+	if err := f.Chmod(0o644); err != nil {
+		f.Close()
+		return err
+	}
 	if _, err := f.Write(data); err != nil {
 		f.Close()
 		return err

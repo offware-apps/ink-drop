@@ -9,8 +9,10 @@ hands its result to the next through a plain folder, whose shape is
 sync it to a Boox, a Kobo or any tablet with whatever already syncs there,
 Syncthing, WebDAV or a USB cable. Reading needs no network.
 
-No stage is built yet. The [`folder`](folder/folder.go) package they share is,
-and the commands below are the target.
+Each stage reads one line at a time on stdin, a URL for `ink-fetch` and an
+item path for the others, and prints the paths it wrote. `-to` sets the
+folder it writes to: `ink-fetch` and `ink-readable` default to
+`ink-drop/<stage>` under the user cache folder, and `ink-epub` needs it.
 
 ## TL;DR
 
@@ -25,14 +27,15 @@ echo https://example.org/post | bin/ink-fetch | bin/ink-readable | bin/ink-epub 
 
 | Stage | Job | State |
 | --- | --- | --- |
-| [`ink-fetch`](cmd/ink-fetch/main.go) | Downloads each URL into the work folder | Not built |
-| [`ink-readable`](cmd/ink-readable/main.go) | Strips each HTML item down to its article | Not built |
-| [`ink-epub`](cmd/ink-epub/main.go) | Packs each HTML item into an EPUB in the library | Not built |
+| [`ink-fetch`](cmd/ink-fetch/main.go) | Downloads each URL into the work folder | Built |
+| [`ink-readable`](cmd/ink-readable/main.go) | Strips each HTML item down to its article | Built |
+| [`ink-epub`](cmd/ink-epub/main.go) | Packs each HTML item into an EPUB in the library | Built |
 | [`ink-feed`](cmd/ink-feed/main.go) | Turns each RSS or Atom feed into one digest item | Not built |
 | [`ink-mirror`](cmd/ink-mirror/main.go) | Crawls one site into a single HTML item | Not built |
 
-A PDF needs no conversion: `ink-fetch` drops it in the work folder and a copy
-moves it to the library.
+A PDF needs no conversion: `ink-readable` passes it through and `ink-epub`
+copies it into the library. `ink-fetch` inlines a page's images, so every
+later stage runs offline.
 
 ## Rules
 

@@ -14,8 +14,9 @@ server, a tablet's own library.
    from a temporary file. A sink therefore never sees half a document, nor a
    document without its sidecar.
 3. A stage reads item paths on stdin, one per line, writes its output items,
-   and prints each output path on stdout. Stages chain with a pipe and run from
-   cron or `xargs` unchanged.
+   and prints each output path on stdout. A stage that starts a chain,
+   `ink-fetch` for one, reads URLs instead. Stages chain with a pipe and run
+   from cron or `xargs` unchanged.
 
 ```sh
 echo https://example.org/post | ink-fetch | ink-readable | ink-epub -to ~/Books
