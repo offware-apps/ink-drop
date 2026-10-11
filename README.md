@@ -49,7 +49,7 @@ later stage runs offline.
 
 ## Rules
 
-ink-drop is a tool block under article I of the
+ink-drop is a tool block under article VIII of the
 [Offware constitution](https://github.com/offware-apps/Vision/blob/main/constitution.md):
 it runs outside any app and feeds one through plain files.
 [constitution.md](constitution.md) checks it against every article.
