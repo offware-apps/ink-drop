@@ -49,8 +49,10 @@ later stage runs offline.
 
 ## Rules
 
-ink-drop keeps the [Offware constitution](https://github.com/offware-apps/Vision/blob/main/constitution.md),
-plus its own in [constitution.md](constitution.md).
+ink-drop is a tool block under article I of the
+[Offware constitution](https://github.com/offware-apps/Vision/blob/main/constitution.md):
+it runs outside any app and feeds one through plain files.
+[constitution.md](constitution.md) checks it against every article.
 
 ## License
 
