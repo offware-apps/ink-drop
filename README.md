@@ -9,6 +9,16 @@ hands its result to the next through a plain folder, whose shape is
 sync it to a Boox, a Kobo or any tablet with whatever already syncs there,
 Syncthing, WebDAV or a USB cable. Reading needs no network.
 
+> The French Wikipedia article on
+> [electronic paper](https://fr.wikipedia.org/wiki/Papier_%C3%A9lectronique),
+> on the left as the web serves it and on the right as the EPUB the three
+> stages made from it. Both are headless Chromium at 600×800, the EPUB page in
+> greyscale with a serif stylesheet standing in for an e-ink reader's. Text
+> [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), photo
+> [in the public domain](https://commons.wikimedia.org/wiki/File:E-ink-display-detail.jpg).
+
+![The Wikipedia page with its menus, tabs and language picker, beside the EPUB holding only the title, the source link, the photo and the article text](media/before-after.png)
+
 Each stage reads one line at a time on stdin, a URL for `ink-fetch` and an
 item path for the others, and prints the paths it wrote. `-to` sets the
 folder it writes to: `ink-fetch` and `ink-readable` default to
