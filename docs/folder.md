@@ -22,6 +22,9 @@ server, a tablet's own library.
 echo https://example.org/post | ink-fetch | ink-readable | ink-epub -to ~/Books
 ```
 
+`.ink/feeds/` holds the ids of the entries `ink-feed` has already seen, one
+file per feed.
+
 ## The sidecar
 
 ```json

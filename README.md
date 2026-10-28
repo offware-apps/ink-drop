@@ -19,10 +19,11 @@ Syncthing, WebDAV or a USB cable. Reading needs no network.
 
 ![The Wikipedia page with its menus, tabs and language picker, beside the EPUB holding only the title, the source link, the photo and the article text](media/before-after.png)
 
-Each stage reads one line at a time on stdin, a URL for `ink-fetch` and an
-item path for the others, and prints the paths it wrote. `-to` sets the
-folder it writes to: `ink-fetch` and `ink-readable` default to
-`ink-drop/<stage>` under the user cache folder, and `ink-epub` needs it.
+Each stage reads one line at a time on stdin, a URL for `ink-fetch` and
+`ink-feed` and an item path for the others, and prints the paths it wrote.
+`-to` sets the folder it writes to: `ink-fetch`, `ink-feed` and `ink-readable`
+default to `ink-drop/<stage>` under the user cache folder, and `ink-epub` needs
+it.
 
 ## TL;DR
 
@@ -31,7 +32,12 @@ folder it writes to: `ink-fetch` and `ink-readable` default to
 go build -o bin/ ./cmd/...
 # 2. Turn one article into an EPUB in the library
 echo https://example.org/post | bin/ink-fetch | bin/ink-readable | bin/ink-epub -to ~/Books
+# 3. Turn the new posts of one feed into an EPUB digest
+echo https://go.dev/blog/feed.atom | bin/ink-feed | bin/ink-epub -to ~/Books
 ```
+
+Nothing fetches feeds on its own: [docs/schedule.md](docs/schedule.md) sets up
+an hourly run that the user enables.
 
 ## Stages
 
@@ -40,7 +46,7 @@ echo https://example.org/post | bin/ink-fetch | bin/ink-readable | bin/ink-epub 
 | [`ink-fetch`](cmd/ink-fetch/main.go) | Downloads each URL into the work folder | Built |
 | [`ink-readable`](cmd/ink-readable/main.go) | Strips each HTML item down to its article | Built |
 | [`ink-epub`](cmd/ink-epub/main.go) | Packs each HTML item into an EPUB in the library | Built |
-| [`ink-feed`](cmd/ink-feed/main.go) | Turns each RSS or Atom feed into one digest item | Not built |
+| [`ink-feed`](cmd/ink-feed/main.go) | Turns each RSS or Atom feed into one digest item | Built |
 | [`ink-mirror`](cmd/ink-mirror/main.go) | Crawls one site into a single HTML item | Not built |
 
 A PDF needs no conversion: `ink-readable` passes it through and `ink-epub`

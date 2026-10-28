@@ -44,11 +44,11 @@ func Put(dir, name string, data []byte, m Meta) (string, error) {
 	if err := os.MkdirAll(filepath.Join(dir, SidecarDir), 0o755); err != nil {
 		return "", err
 	}
-	if err := writeAtomic(filepath.Join(dir, SidecarDir, name+".json"), append(side, '\n')); err != nil {
+	if err := WriteAtomic(filepath.Join(dir, SidecarDir, name+".json"), append(side, '\n')); err != nil {
 		return "", err
 	}
 	path := filepath.Join(dir, name)
-	return path, writeAtomic(path, data)
+	return path, WriteAtomic(path, data)
 }
 
 // Get returns the sidecar of the document at path.
@@ -70,9 +70,9 @@ func Get(path string) (Meta, error) {
 	return m, nil
 }
 
-// writeAtomic renames a finished temporary file into place, so a sync tool
+// WriteAtomic renames a finished temporary file into place, so a sync tool
 // never copies half a document.
-func writeAtomic(path string, data []byte) error {
+func WriteAtomic(path string, data []byte) error {
 	f, err := os.CreateTemp(filepath.Dir(path), ".ink-tmp-*")
 	if err != nil {
 		return err
