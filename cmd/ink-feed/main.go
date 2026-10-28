@@ -91,7 +91,10 @@ func digest(client *http.Client, dir, rawURL string) ([]string, error) {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return nil, errors.New("not an http or https URL")
 	}
-	body, _, final, err := web.Get(client, u.String(), maxFeed)
+	body, ctype, final, err := web.Get(client, u.String(), maxFeed)
+	if err == nil && ctype == "text/html" {
+		body, final, err = discover(client, body, final)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -142,6 +145,48 @@ func digest(client *http.Client, dir, rawURL string) ([]string, error) {
 		return nil, err
 	}
 	return []string{p}, folder.WriteAtomic(state, b)
+}
+
+// discover returns the first feed a site's page names in a link tag, so the
+// user can hand ink-feed the address of a site rather than of its feed.
+func discover(client *http.Client, page []byte, base *url.URL) ([]byte, *url.URL, error) {
+	doc, err := html.Parse(bytes.NewReader(page))
+	if err != nil {
+		return nil, nil, err
+	}
+	var href string
+	var walk func(n *html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.DataAtom == atom.Link && href == "" {
+			var rel, typ, h string
+			for _, a := range n.Attr {
+				switch a.Key {
+				case "rel":
+					rel = a.Val
+				case "type":
+					typ = a.Val
+				case "href":
+					h = a.Val
+				}
+			}
+			if slices.Contains(strings.Fields(strings.ToLower(rel)), "alternate") && (typ == "application/rss+xml" || typ == "application/atom+xml") {
+				href = h
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	if href == "" {
+		return nil, nil, errors.New("not a feed, and the page links to none")
+	}
+	u, err := base.Parse(href)
+	if err != nil {
+		return nil, nil, err
+	}
+	body, _, final, err := web.Get(client, u.String(), maxFeed)
+	return body, final, err
 }
 
 // render returns the digest page: per entry its linked title, its date and its

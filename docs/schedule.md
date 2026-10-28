@@ -2,11 +2,11 @@
 
 Nothing runs on its own: feeds are fetched on a schedule only once the user
 enables a timer. The timer below runs `ink-feed` over every feed listed in
-`~/.config/ink-drop/feeds.txt`, one URL per line, and packs each digest into
-`~/Books`. A feed with nothing new since the last run adds nothing. The timer
-and cron search their own `PATH`, not the shell's: install both stages there,
-or write their full paths. `systemctl --user show-environment` prints the
-timer's `PATH`.
+`~/.config/ink-drop/feeds.txt`, one feed or site address per line, and packs
+each digest into `~/Books`. A feed with nothing new since the last run adds
+nothing. The timer and cron search their own `PATH`, not the shell's: install
+both stages there, or write their full paths. `systemctl --user
+show-environment` prints the timer's `PATH`.
 
 ## TL;DR
 

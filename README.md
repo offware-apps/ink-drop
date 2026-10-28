@@ -32,12 +32,14 @@ it.
 go build -o bin/ ./cmd/...
 # 2. Turn one article into an EPUB in the library
 echo https://example.org/post | bin/ink-fetch | bin/ink-readable | bin/ink-epub -to ~/Books
-# 3. Turn the new posts of one feed into an EPUB digest
-echo https://go.dev/blog/feed.atom | bin/ink-feed | bin/ink-epub -to ~/Books
+# 3. Turn the new posts of one site's feed into an EPUB digest
+echo https://go.dev/blog/ | bin/ink-feed | bin/ink-epub -to ~/Books
 ```
 
-Nothing fetches feeds on its own: [docs/schedule.md](docs/schedule.md) sets up
-an hourly run that the user enables.
+`ink-feed` takes a feed's address or a site's: given a page, it follows the
+first feed the page names in a link tag. Nothing fetches feeds on its own:
+[docs/schedule.md](docs/schedule.md) sets up an hourly run that the user
+enables.
 
 ## Stages
 

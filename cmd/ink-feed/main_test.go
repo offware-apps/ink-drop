@@ -38,7 +38,14 @@ func server(items *[]string) *httptest.Server {
 </feed>`))
 	})
 	mux.HandleFunc("/page.html", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html><body><p>Not a feed.</p></body></html>`))
+		w.Write([]byte(`<html><head><link rel="stylesheet" type="application/rss+xml" href="rss.xml"></head><body><p>Not a feed.</p></body></html>`))
+	})
+	mux.HandleFunc("/note.xml", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		w.Write([]byte(`<?xml version="1.0"?><note><title>Not a feed</title><item>x</item></note>`))
+	})
+	mux.HandleFunc("/site/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><head><link rel="alternate" hreflang="fr" type="text/html" href="/fr/"><link rel="Alternate" type="application/rss+xml" href="../rss.xml"></head><body>A site.</body></html>`))
 	})
 	mux.HandleFunc("/posts/img.png", func(w http.ResponseWriter, r *http.Request) { w.Write(png) })
 	return httptest.NewServer(mux)
@@ -131,11 +138,30 @@ func TestFeedStatePerURL(t *testing.T) {
 	}
 }
 
-func TestFeedRejectsPage(t *testing.T) {
-	srv := server(nil)
+func TestFeedFromSite(t *testing.T) {
+	items := []string{"one"}
+	srv := server(&items)
 	defer srv.Close()
-	if _, err := digest(srv.Client(), t.TempDir(), srv.URL+"/page.html"); err == nil {
-		t.Error("a page that is not a feed passed as an empty one")
+	paths, err := digest(srv.Client(), t.TempDir(), srv.URL+"/site/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page := read(t, paths); !strings.Contains(page, "Full one.") {
+		t.Errorf("want the feed the site links to, got %s", page)
+	}
+	if m, _ := folder.Get(paths[0]); m.Source != srv.URL+"/rss.xml" {
+		t.Errorf("sidecar source %q, want the feed's own address", m.Source)
+	}
+}
+
+func TestFeedRejectsPage(t *testing.T) {
+	items := []string{"one"}
+	srv := server(&items)
+	defer srv.Close()
+	for _, p := range []string{"/page.html", "/note.xml"} {
+		if _, err := digest(srv.Client(), t.TempDir(), srv.URL+p); err == nil {
+			t.Errorf("%s is no feed and links to none, yet passed as one", p)
+		}
 	}
 }
 
