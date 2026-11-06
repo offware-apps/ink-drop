@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ink-drop library</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="library">
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5s-7 7.6-7 12.4a7 7 0 0 0 14 0c0-4.8-7-12.4-7-12.4z"/></svg>
+      ink-drop <span class="count" id="count"></span>
+    </div>
+    <div class="bar">
+      <span class="muted" id="sendStatus" aria-live="polite"></span>
+      <button id="send">Send to tablet</button>
+      <input type="search" id="search" placeholder="Search  /" aria-label="Search your library">
+    </div>
+  </header>
+  <ul class="items" id="items"></ul>
+  <div class="empty" id="empty" hidden>
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5s-7 7.6-7 12.4a7 7 0 0 0 14 0c0-4.8-7-12.4-7-12.4z"/></svg>
+    <p>Nothing saved yet.<br>Click the ink-drop button on any article, or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>.</p>
+  </div>
+  <form class="settings" id="settings">
+    <label for="folder">Books are saved in your download folder, under</label>
+    <input type="text" id="folder" required>
+    <button class="quiet" id="saveFolder">Save</button>
+    <span id="folderStatus"></span>
+  </form>
+</main>
+<script src="shared.js"></script>
+<script type="module" src="library.js"></script>
+</body>
+</html>

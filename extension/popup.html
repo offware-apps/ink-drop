@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ink-drop</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="popup">
+<div class="brand">
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5s-7 7.6-7 12.4a7 7 0 0 0 14 0c0-4.8-7-12.4-7-12.4z"/></svg>
+  ink-drop
+</div>
+<div class="card">
+  <p class="title" id="title"></p>
+  <div class="muted" id="site"></div>
+</div>
+<div class="status" id="status"><span class="spinner"></span><span>Saving for offline reading…</span></div>
+<div class="muted" id="detail"></div>
+<div class="actions" style="margin-top:14px">
+  <button class="quiet" id="send" disabled>Send to tablet</button>
+  <button id="library">Open library</button>
+</div>
+<script src="shared.js"></script>
+<script type="module" src="popup.js"></script>
+</body>
+</html>

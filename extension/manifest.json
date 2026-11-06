@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "ink-drop",
+  "version": "0.2.0",
+  "description": "Save the page you are reading as an EPUB your e-reader opens offline.",
+  "permissions": ["activeTab", "scripting", "downloads", "storage", "nativeMessaging"],
+  "background": {
+    "scripts": ["shared.js", "epub.js", "background.js"],
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Save to ink-drop",
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icon-16.png", "32": "icon-32.png", "48": "icon-48.png" }
+  },
+  "icons": { "16": "icon-16.png", "32": "icon-32.png", "48": "icon-48.png", "128": "icon-128.png" },
+  "options_ui": { "page": "library.html", "open_in_tab": true },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "Save this page to ink-drop"
+    }
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "ink-drop@offware-apps.github.io",
+      "strict_min_version": "128.0",
+      "data_collection_permissions": { "required": ["none"] }
+    }
+  }
+}
