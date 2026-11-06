@@ -6,26 +6,23 @@ $("library").addEventListener("click", () => {
   window.close();
 });
 
+let saved;
+
 $("send").addEventListener("click", async () => {
   $("send").disabled = true;
-  show("", [spinner(), "Sending to tablet…"]);
   try {
-    show("good", "✓ Sent to tablet", await sendToTablet());
+    await host("send", saved.file);
+    show("good", "✓ Ready for the tablet", "It arrives when sync is on.");
   } catch (err) {
     show("bad", err.message);
+    $("send").disabled = false;
   }
-  $("send").disabled = false;
 });
 
-function spinner() {
-  return Object.assign(document.createElement("span"), { className: "spinner" });
-}
-
-// show sets the status line to text, a string or a list of nodes and strings.
 function show(kind, text, detail = "") {
   const status = $("status");
   status.className = `status ${kind}`;
-  status.replaceChildren(...[].concat(text));
+  status.textContent = text;
   $("detail").textContent = detail;
 }
 
@@ -39,10 +36,11 @@ if (!/^https?:/.test(tab?.url ?? "")) {
   // The background script keeps working if this popup closes first.
   const res = await api.runtime.sendMessage({ type: "save", tabId: tab.id });
   if (res?.item) {
+    saved = res.item;
     show("good", "✓ Saved for offline reading", `${res.item.minutes} min read`);
+    // Sending waits for the save, so no half-written book is linked.
+    $("send").disabled = false;
   } else {
     show("bad", res?.error || "Saving failed.");
   }
 }
-// Sending waits for the save, so no half-written book is copied.
-$("send").disabled = false;

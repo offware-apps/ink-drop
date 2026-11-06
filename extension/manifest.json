@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ink-drop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Save the page you are reading as an EPUB your e-reader opens offline.",
   "permissions": ["activeTab", "scripting", "downloads", "storage", "nativeMessaging"],
   "background": {

@@ -5,18 +5,17 @@ const api = globalThis.browser ?? globalThis.chrome;
 // folder is created under the browser's download folder.
 const DEFAULTS = { folder: "ink-drop", items: [] };
 
-// sendToTablet asks the ink-send helper to run the user's send command, and
-// returns the last line it printed. The helper takes no input from here.
-async function sendToTablet() {
+// host asks the ink-send helper to list the library, or to send, unsend or
+// delete one file, and returns its reply.
+async function host(action, file) {
   let res;
   try {
-    res = await api.runtime.sendNativeMessage("ink_drop", {});
+    res = await api.runtime.sendNativeMessage("ink_drop", { action, file });
   } catch {
     throw new Error("The ink-send helper is not installed. Run: ink-send -install");
   }
-  if (!res?.ok) throw new Error(res?.output || "Sending failed.");
-  // The command's last line, past any "path: " prefix such as adb prints.
-  return (res.output.split("\n").filter(Boolean).pop() || "Sent.").split(": ").pop();
+  if (!res?.ok) throw new Error(res?.error || "ink-send failed.");
+  return res;
 }
 
 // slug returns s as lowercase ASCII letters and digits joined by hyphens,
