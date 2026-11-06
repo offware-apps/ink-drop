@@ -88,7 +88,8 @@ h1 { font-size: 1.5em; line-height: 1.2; margin: 1em 0 .3em; }
 img { max-width: 100%; height: auto; }
 figure { margin: 1em 0; }
 figcaption { font-size: .85em; color: #555; }
-pre { white-space: pre-wrap; font-size: .85em; }
+pre, code, kbd, samp { font-family: "Droid Sans Mono", monospace; }
+pre { white-space: pre-wrap; font-size: .8em; line-height: 1.3; padding-left: .6em; border-left: 3px solid #888; }
 blockquote { margin: 1em 0; padding-left: 1em; border-left: 3px solid #999; }
 `,
     ],

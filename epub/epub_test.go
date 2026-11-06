@@ -19,6 +19,9 @@ const doc = `<!DOCTYPE html><html lang="fr"><head><title>x</title></head><body>
 <img src="` + pixel + `" alt="un"><img src="` + pixel + `" alt="deux"><img src="https://example.org/remote.png">
 <p id="note-1">une note</p><p id="note-1">doublon</p><p id="1bad">x</p><p id="Réf">y</p>
 <a href="#note-1">vers</a> <a href="#missing">perdu</a> <a href="#R%C3%A9f">réf</a>
+<pre>if x {
+` + "\t" + `<span>y</span>
+}</pre><p>tab` + "\t" + `here</p>
 <!-- commentaire --></body></html>`
 
 func TestBuild(t *testing.T) {
@@ -64,8 +67,17 @@ func TestBuild(t *testing.T) {
 	if strings.Count(text, `id="note-1"`) != 1 || strings.Contains(text, `id="1bad"`) || !strings.Contains(text, `<a href="#note-1">`) || !strings.Contains(text, "<a>perdu</a>") || !strings.Contains(text, `<a href="#Réf">`) {
 		t.Errorf("ids or in-page links not repaired:\n%s", text)
 	}
-	if _, ok := files["OEBPS/images/img-001.png"]; !ok || len(z.File) != 6 {
-		t.Errorf("want one deduplicated image among 6 entries, got %d", len(z.File))
+	if _, ok := files["OEBPS/images/img-001.png"]; !ok || len(z.File) != 7 {
+		t.Errorf("want one deduplicated image among 7 entries, got %d", len(z.File))
+	}
+	// A reader applies a stylesheet only if the page links it and the manifest lists it.
+	if !strings.Contains(text, "if x {\n  <span>y</span>\n}") || !strings.Contains(text, "tab\there") {
+		t.Errorf("tabs under pre are not spaces, or tabs elsewhere changed:\n%s", text)
+	}
+	if !strings.Contains(files["OEBPS/style.css"], "code") || !strings.Contains(files["OEBPS/style.css"], `"Droid Sans Mono", monospace`) ||
+		!strings.Contains(text, `<link rel="stylesheet" href="style.css"/>`) ||
+		!strings.Contains(files["OEBPS/content.opf"], `href="style.css" media-type="text/css"`) {
+		t.Error("code has no monospace stylesheet reaching the page")
 	}
 	if !strings.Contains(files["OEBPS/content.opf"], `href="images/img-001.png" media-type="image/png"`) {
 		t.Errorf("image missing from the manifest:\n%s", files["OEBPS/content.opf"])

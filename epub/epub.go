@@ -75,6 +75,11 @@ func Build(b Book, doc io.Reader) ([]byte, error) {
 		return true
 	})
 	links(body)
+	walk(body, func(n *html.Node) {
+		if n.DataAtom == atom.Pre {
+			spaceTabs(n)
+		}
+	})
 	var text bytes.Buffer
 	for c := body.FirstChild; c != nil; c = c.NextSibling {
 		if err := html.Render(&text, c); err != nil {
@@ -183,6 +188,17 @@ func walk(n *html.Node, fn func(*html.Node)) {
 	}
 }
 
+// spaceTabs turns each tab in the text under n into two spaces, since a reader
+// draws a tab one space wide and flattens code's indentation.
+func spaceTabs(n *html.Node) {
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == html.TextNode {
+			c.Data = strings.ReplaceAll(c.Data, "\t", "  ")
+		}
+		spaceTabs(c)
+	}
+}
+
 // xmlName reports whether s can be an XML id: a letter or underscore, then
 // letters, digits, hyphens, underscores and dots.
 func xmlName(s string) bool {
@@ -254,6 +270,7 @@ func pack(b Book, lang, text string, images []image) ([]byte, error) {
 		{"OEBPS/content.opf", []byte(opf(b, title, src, l, images))},
 		{"OEBPS/nav.xhtml", []byte(fmt.Sprintf(nav, l, l, title, title))},
 		{"OEBPS/text.xhtml", []byte(fmt.Sprintf(page, l, l, title, title, src, esc(host(b.Source)), text))},
+		{"OEBPS/style.css", []byte(style)},
 	}
 	for _, img := range images {
 		files = append(files, struct {
@@ -344,7 +361,8 @@ const opfTmpl = `<?xml version="1.0" encoding="UTF-8"?>
   </metadata>
   <manifest>
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
-    <item id="text" href="text.xhtml" media-type="application/xhtml+xml"/>%s
+    <item id="text" href="text.xhtml" media-type="application/xhtml+xml"/>
+    <item id="css" href="style.css" media-type="text/css"/>%s
   </manifest>
   <spine>
     <itemref idref="text"/>
@@ -363,11 +381,17 @@ const nav = `<?xml version="1.0" encoding="UTF-8"?>
 const page = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="%s" lang="%s">
-<head><meta charset="utf-8"/><title>%s</title></head>
+<head><meta charset="utf-8"/><title>%s</title><link rel="stylesheet" href="style.css"/></head>
 <body>
 <h1>%s</h1>
 <p><a href="%s">%s</a></p>
 %s
 </body>
 </html>
+`
+
+// style sets code apart from the text around it. A Boox reader ignores the
+// generic monospace and needs the system font by name.
+const style = `pre, code, kbd, samp { font-family: "Droid Sans Mono", monospace; }
+pre { white-space: pre-wrap; font-size: .8em; line-height: 1.3; padding-left: .6em; border-left: 3px solid #888; }
 `
