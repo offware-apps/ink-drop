@@ -4,14 +4,17 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,15 +25,16 @@ import (
 	"github.com/offware-apps/ink-drop/internal/stage"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/renderer/html"
+	gmhtml "github.com/yuin/goldmark/renderer/html"
 )
 
 // A route offers Markdown on this machine as books. Path is a file, or a folder
 // whose every Markdown file is a book. Book makes each folder holding a file of
 // that name one book instead, of the Markdown beside it and, where Rounds is set,
-// in the highest numbered folder there. Files makes one book of the files listed,
-// relative to Path. Order puts the parts of a book in order, "*" standing for the
-// rest. A route is read only: a book is made in the library when it is ticked.
+// in the highest numbered folder there. Files makes one book of the Markdown files
+// listed, each inside Path. Order puts the parts of a book in order, "*" standing
+// for the rest. A route is read only: a book is made in the library when it is
+// ticked.
 type route struct {
 	Path   string   `json:"path"`
 	Tab    string   `json:"tab,omitempty"`
@@ -48,15 +52,29 @@ const routePrefix = "route:"
 // defaultTab is the library folder of a route that names none.
 const defaultTab = "notes"
 
+// maxMarkdown bounds the Markdown of one book a route offers; bounded bounds the
+// time and memory of making it.
+const maxMarkdown = 1 << 20
+
 // Raw HTML is kept, details blocks being common in Markdown, and the book drops
 // anything that could run.
-var markdown = goldmark.New(goldmark.WithExtensions(extension.GFM), goldmark.WithRendererOptions(html.WithUnsafe()))
+var markdown = goldmark.New(goldmark.WithExtensions(extension.GFM), goldmark.WithRendererOptions(gmhtml.WithUnsafe()))
 
 var headingLink = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
 
 // plainName reports whether s names one file or folder, nothing above it.
 func plainName(s string) bool {
-	return s != "" && s == filepath.Base(s) && !strings.HasPrefix(s, ".") && !strings.ContainsAny(s, `/\`)
+	return s == filepath.Base(s) && filepath.IsLocal(s) && !strings.HasPrefix(s, ".")
+}
+
+// hidden reports whether any element of p starts with a dot.
+func hidden(p string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(p), "/") {
+		if strings.HasPrefix(part, ".") {
+			return true
+		}
+	}
+	return false
 }
 
 // checkRoutes expands and checks the routes in place. A route as wide as the home
@@ -70,7 +88,7 @@ func checkRoutes(routes []route, home string) error {
 		if !filepath.IsAbs(r.Path) {
 			return fmt.Errorf("route %q needs a full path", r.Path)
 		}
-		if clean := filepath.Clean(r.Path); clean == filepath.Clean(home) || clean == filepath.Dir(clean) {
+		if inside(home, r.Path) {
 			return fmt.Errorf("route %q is too wide, name a folder inside it", r.Path)
 		}
 		if r.Tab == "" {
@@ -79,16 +97,17 @@ func checkRoutes(routes []route, home string) error {
 		if !plainName(r.Tab) || (r.Book != "" && !plainName(r.Book)) {
 			return fmt.Errorf("route %q: a tab or a book is one plain name", r.Path)
 		}
+		if hidden(r.Path) || hidden(resolve(r.Path)) {
+			return fmt.Errorf("route %q is hidden or inside a hidden folder", r.Path)
+		}
 		if r.Book != "" && len(r.Files) > 0 {
 			return fmt.Errorf("route %q: book and files do not go together", r.Path)
 		}
 		if _, err := regexp.Compile(r.Rounds); err != nil {
 			return fmt.Errorf("route %q: rounds: %w", r.Path, err)
 		}
-		for j, file := range r.Files {
-			if rest, ok := strings.CutPrefix(file, "~/"); ok {
-				r.Files[j] = filepath.Join(home, rest)
-			} else if !filepath.IsLocal(file) || !strings.HasSuffix(file, ".md") {
+		for _, file := range r.Files {
+			if !filepath.IsLocal(file) || hidden(file) || strings.HasPrefix(file, "~") || !strings.HasSuffix(file, ".md") {
 				return fmt.Errorf("route %q: %q is not a Markdown file inside it", r.Path, file)
 			}
 		}
@@ -102,15 +121,15 @@ type piece struct {
 	dir, rel string
 }
 
-// read returns the file, refusing one that a link or a name takes out of dir,
-// even one swapped in since the walk.
-func (p piece) read() ([]byte, error) {
-	root, err := os.OpenRoot(p.dir)
+// read returns at most max bytes of the file, through a root at dir.
+func (p piece) read(max int64) ([]byte, error) {
+	root, err := openDir(p.dir)
 	if err != nil {
 		return nil, err
 	}
 	defer root.Close()
-	return root.ReadFile(p.rel)
+	data, _, err := readPlain(root, p.rel, max)
+	return data, err
 }
 
 // routeItem is one book a route offers, made or not.
@@ -120,9 +139,47 @@ type routeItem struct {
 	pieces                      []piece
 }
 
-// routeItems walks every route afresh. A route whose path is missing, a drive
-// not mounted for one, offers nothing.
-func (f folders) routeItems() ([]routeItem, error) {
+// readable fills the book's title and time from its first file and reports
+// whether every file of it can be read, at most maxMarkdown in all, so a book is
+// offered only when all of it can be made.
+func (it *routeItem) readable() bool {
+	var total int64
+	for i, p := range it.pieces {
+		root, err := openDir(p.dir)
+		if err != nil {
+			return false
+		}
+		file, info, err := openPlain(root, p.rel)
+		root.Close()
+		if err != nil {
+			return false
+		}
+		var start []byte
+		if i == 0 {
+			start, err = io.ReadAll(io.LimitReader(file, 4096))
+		}
+		file.Close()
+		if total += info.Size(); err != nil || total > maxMarkdown {
+			return false
+		}
+		if i > 0 {
+			continue
+		}
+		it.modified = info.ModTime().UnixMilli()
+		if it.title == "" {
+			it.title = heading(string(start))
+		}
+		if it.title == "" {
+			it.title = strings.TrimSuffix(path.Base(p.rel), ".md")
+		}
+	}
+	return true
+}
+
+// routeItems walks every route afresh. What it cannot read, a route whose path is
+// missing because a drive is not mounted, a folder or file it may not open or a
+// link, it leaves out, so one bad file never hides the rest.
+func (f folders) routeItems() []routeItem {
 	var items []routeItem
 	for i, r := range f.Routes {
 		prefix := routePrefix + strconv.Itoa(i) + ":"
@@ -130,38 +187,32 @@ func (f folders) routeItems() ([]routeItem, error) {
 			it := routeItem{id: prefix, tab: r.Tab, title: r.Title, where: filepath.Base(r.Path),
 				name: bookName(r.Title, r.Path+"\x00"+strings.Join(r.Files, "\x00"))}
 			for _, file := range r.Files {
-				if filepath.IsAbs(file) {
-					it.pieces = append(it.pieces, piece{filepath.Dir(file), filepath.Base(file)})
-				} else {
-					it.pieces = append(it.pieces, piece{r.Path, filepath.ToSlash(file)})
-				}
+				it.pieces = append(it.pieces, piece{r.Path, file})
 			}
-			if err := it.head(); err != nil {
-				return nil, err
+			if it.readable() {
+				items = append(items, it)
 			}
-			items = append(items, it)
 			continue
 		}
 		info, err := os.Stat(r.Path)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
 		if err != nil {
-			return nil, err
+			continue
 		}
 		if !info.IsDir() {
 			base := filepath.Base(r.Path)
+			if !strings.HasSuffix(base, ".md") {
+				continue
+			}
 			it := routeItem{id: prefix + base, tab: r.Tab, title: r.Title, where: filepath.Base(filepath.Dir(r.Path)),
 				name: bookName(strings.TrimSuffix(base, ".md"), r.Path), pieces: []piece{{filepath.Dir(r.Path), base}}}
-			if err := it.head(); err != nil {
-				return nil, err
+			if it.readable() {
+				items = append(items, it)
 			}
-			items = append(items, it)
 			continue
 		}
 		found, err := markdownFiles(r.Path)
 		if err != nil {
-			return nil, err
+			continue
 		}
 		var rounds *regexp.Regexp
 		if r.Rounds != "" {
@@ -185,75 +236,59 @@ func (f folders) routeItems() ([]routeItem, error) {
 					it.pieces = append(it.pieces, piece{r.Path, file})
 				}
 			}
-			if err := it.head(); err != nil {
-				return nil, err
+			if it.readable() {
+				items = append(items, it)
 			}
-			items = append(items, it)
 		}
 	}
-	return items, nil
-}
-
-// head fills the title from the first file's first heading, unless the route gave
-// one, and the time it changed.
-func (it *routeItem) head() error {
-	first := it.pieces[0]
-	root, err := os.OpenRoot(first.dir)
-	if err != nil {
-		return err
-	}
-	defer root.Close()
-	file, err := root.Open(first.rel)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return err
-	}
-	it.modified = info.ModTime().UnixMilli()
-	start, err := io.ReadAll(io.LimitReader(file, 4096))
-	if err != nil {
-		return err
-	}
-	if it.title == "" {
-		it.title = heading(string(start))
-	}
-	if it.title == "" {
-		it.title = strings.TrimSuffix(path.Base(first.rel), ".md")
-	}
-	return nil
+	return items
 }
 
 // markdownFiles lists the Markdown under dir, as slash paths from it. A hidden
-// folder or another git checkout is not this route's, and a link is not followed.
+// folder or another git checkout is not this route's, and each folder is opened
+// only as a folder, never through a link; readPlain refuses what is not a file.
 func markdownFiles(dir string) ([]string, error) {
-	root, err := os.OpenRoot(dir)
+	root, err := openDir(dir)
 	if err != nil {
 		return nil, err
 	}
 	defer root.Close()
 	var files []string
-	err = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+	walkMarkdown(root, "", 0, &files)
+	return files, nil
+}
+
+// maxDepth bounds how many folders deep a walk goes, since each level costs a
+// look at every folder above it.
+const maxDepth = 16
+
+func walkMarkdown(root *os.Root, prefix string, depth int, files *[]string) {
+	entries, err := fs.ReadDir(root.FS(), ".")
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		if !e.IsDir() {
+			if strings.HasSuffix(name, ".md") {
+				*files = append(*files, prefix+name)
+			}
+			continue
+		}
+		sub, err := root.OpenRoot(name)
 		if err != nil {
-			return err
+			continue
 		}
-		if d.IsDir() {
-			if p == "." {
-				return nil
+		if _, err := sub.Lstat(".git"); err != nil {
+			if depth < maxDepth {
+				walkMarkdown(sub, prefix+name+"/", depth+1, files)
 			}
-			if _, err := root.Lstat(path.Join(p, ".git")); strings.HasPrefix(d.Name(), ".") || err == nil {
-				return fs.SkipDir
-			}
-			return nil
 		}
-		if d.Type().IsRegular() && strings.HasSuffix(p, ".md") {
-			files = append(files, p)
-		}
-		return nil
-	})
-	return files, err
+		sub.Close()
+	}
 }
 
 // bookFiles returns the files of the book found at main, in reading order: the
@@ -336,11 +371,7 @@ func bookName(label, place string) string {
 // findRoute returns the book a route offers under id. Only an id this walk found
 // is accepted, so a name from the browser is never joined to a path.
 func (f folders) findRoute(id string) (routeItem, error) {
-	items, err := f.routeItems()
-	if err != nil {
-		return routeItem{}, err
-	}
-	for _, it := range items {
+	for _, it := range f.routeItems() {
 		if it.id == id {
 			return it, nil
 		}
@@ -349,28 +380,56 @@ func (f folders) findRoute(id string) (routeItem, error) {
 }
 
 // sendRoute makes the book afresh in the library, then sends it as any other.
-func (f folders) sendRoute(id, to string) error {
+func (f folders) sendRoute(id string) error {
 	it, err := f.findRoute(id)
 	if err != nil {
 		return err
 	}
-	if _, err := f.transmitter(to); err != nil {
+	// A book is made only for a sync folder that is there to take it.
+	out, err := f.openSync()
+	if err != nil {
 		return err
 	}
-	var list, parts strings.Builder
+	if out == nil {
+		return errNoSync
+	}
+	out.Close()
+	budget := int64(maxMarkdown)
+	texts := make([][]byte, len(it.pieces))
 	for i, p := range it.pieces {
-		text, err := p.read()
+		// The cap holds for the whole book, should a file grow between the check
+		// and the read.
+		text, err := p.read(budget)
 		if err != nil {
 			return err
 		}
-		part := strings.TrimSuffix(path.Base(p.rel), ".md")
+		budget -= int64(len(text))
+		texts[i] = text
+	}
+	now := time.Now().UTC()
+	book, err := bounded(func() ([]byte, error) { return it.build(texts, now) })
+	if err != nil {
+		return err
+	}
+	if err := f.put(it.tab, it.name, book, folder.Meta{Title: it.title, Fetched: now, Stage: "ink-send"}); err != nil {
+		return err
+	}
+	return f.send(it.tab + "/" + it.name)
+}
+
+// build turns the book's Markdown into an EPUB, a list of its parts first where
+// there are several.
+func (it routeItem) build(texts [][]byte, now time.Time) ([]byte, error) {
+	var list, parts strings.Builder
+	for i, p := range it.pieces {
+		part := html.EscapeString(strings.TrimSuffix(path.Base(p.rel), ".md"))
 		fmt.Fprintf(&list, `<li><a href="#part-%d">%s</a></li>`, i, part)
 		if len(it.pieces) > 1 {
 			fmt.Fprintf(&parts, `<h1 id="part-%d">%s</h1>`, i, part)
 		}
 		var out bytes.Buffer
-		if err := markdown.Convert(text, &out); err != nil {
-			return err
+		if err := markdown.Convert(texts[i], &out); err != nil {
+			return nil, err
 		}
 		parts.Write(out.Bytes())
 	}
@@ -379,32 +438,82 @@ func (f folders) sendRoute(id, to string) error {
 		doc += "<ul>" + list.String() + "</ul>"
 	}
 	doc += parts.String() + "</body></html>"
-	now := time.Now().UTC()
-	book, err := epub.Build(epub.Book{Title: it.title, Modified: now}, strings.NewReader(doc))
+	return epub.Build(epub.Book{Title: it.title, Modified: now}, strings.NewReader(doc))
+}
+
+// Some Markdown takes time or memory that grows with the square of its size, a
+// table of many columns for one, so making a book is given at most these.
+var (
+	maxBuild = 20 * time.Second
+	maxHeap  = uint64(512 << 20)
+)
+
+// errTooHeavy is what a tick gets for a note that would take more than that.
+var errTooHeavy = errors.New("this note takes too much time or memory to make into a book")
+
+// bounded runs work in its own goroutine and gives up once it passes maxBuild or
+// the heap passes maxHeap. ink-send is one process per message, so the work it
+// gives up on ends when the process does, right after the answer.
+func bounded(work func() ([]byte, error)) ([]byte, error) {
+	type result struct {
+		book []byte
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		book, err := work()
+		done <- result{book, err}
+	}()
+	deadline := time.After(maxBuild)
+	tick := time.NewTicker(20 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case r := <-done:
+			return r.book, r.err
+		case <-deadline:
+			return nil, errTooHeavy
+		case <-tick.C:
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			if m.HeapAlloc > maxHeap {
+				return nil, errTooHeavy
+			}
+		}
+	}
+}
+
+// put writes a book and its sidecar into a folder of the library, sidecar first
+// as the folder contract asks, through a root no link inside the library leaves.
+func (f folders) put(tab, name string, data []byte, m folder.Meta) error {
+	lib, err := openDir(f.Library)
 	if err != nil {
 		return err
 	}
-	if _, err := folder.Put(filepath.Join(f.Library, it.tab), it.name, book, folder.Meta{Title: it.title, Fetched: now, Stage: "ink-send"}); err != nil {
+	defer lib.Close()
+	m.Schema, m.File = folder.Schema, name
+	side, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
 		return err
 	}
-	return f.send(it.tab+"/"+it.name, to)
+	if err := writeIn(lib, tab+"/"+folder.SidecarDir+"/"+name+".json", bytes.NewReader(append(side, '\n'))); err != nil {
+		return err
+	}
+	return writeIn(lib, tab+"/"+name, bytes.NewReader(data))
 }
 
-// unsendRoute takes the book back, and out of the library once no transmitter
-// holds it: only a ticked book is kept made.
-func (f folders) unsendRoute(id, to string) error {
+// unsendRoute takes the book out of the sync folder and the library: only a
+// ticked book is kept made.
+func (f folders) unsendRoute(id string) error {
 	it, err := f.findRoute(id)
 	if err != nil {
 		return err
 	}
+	// The name comes from the route's own walk, so its copy in the sync folder is
+	// taken back even when the library's copy is already gone.
 	name := it.tab + "/" + it.name
-	if err := f.unsend(name, to); err != nil {
+	if err := f.unsend(name); err != nil {
 		return err
-	}
-	for _, t := range f.Transmitters {
-		if _, err := os.Lstat(filepath.Join(t.Folder, name)); err == nil {
-			return nil
-		}
 	}
 	err = f.remove(name)
 	if errors.Is(err, fs.ErrNotExist) {

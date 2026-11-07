@@ -6,8 +6,8 @@ any e-reader reads offline.
 ink-drop is a set of small command-line stages. Each one does a single job and
 hands its result to the next through a plain folder, whose shape is
 [the folder contract](docs/folder.md). The finished folder is the library. A
-[browser extension](extension/) lists it, and a tick puts a book in the folder of
-whatever reaches your reader: Syncthing, WebDAV or a USB drive. Reading needs no
+[browser extension](extension/) lists it, and a tick puts a book in the folder
+your sync tool sends to your reader, Syncthing for one. Reading needs no
 network.
 
 > The French Wikipedia article on
@@ -73,12 +73,8 @@ to `~/.config/ink-drop/folders.json`:
 
 ```json
 {
-  "library": "~/Books",
-  "downloads": "~/Downloads/ink-drop",
-  "transmitters": [
-    {"name": "Tablet", "folder": "~/Books/to-tablet"},
-    {"name": "USB", "folder": "/run/media/me/READER"}
-  ],
+  "library": "~/Downloads/ink-drop",
+  "sync": "~/Sync/reader",
   "routes": [
     {"path": "~/notes/idea.md"},
     {"path": "~/notes/recipes", "tab": "food"},
@@ -88,13 +84,15 @@ to `~/.config/ink-drop/folders.json`:
 }
 ```
 
-### Transmitters
+`library` is the folder the browser saves pages into, `ink-drop` under your
+download folder, so nothing ever moves a file into it. A different folder set on
+the library page needs `library` set to match.
 
-A transmitter is a folder that something sends on from, a sync tool or a mounted
-drive. Ticking a book hard-links it there, or copies it onto another drive, and
-unticking takes it back out. ink-drop never starts the sync: whatever watches the
-folder sends the book in its own time. With two transmitters or more, the page
-asks which one a tick is for.
+### The sync folder
+
+`sync` is the one folder your sync tool sends to the reader, a Syncthing folder
+for one. Ticking a book copies it there and unticking removes it. ink-drop never
+sends anything itself: the sync tool does, when you let it run.
 
 ### Routes
 
@@ -102,23 +100,28 @@ A route offers Markdown already on this machine as books, made only when you tic
 one:
 
 - a file is one book;
-- a folder offers each of its Markdown files, at any depth, as its own book;
-- `files` makes one book of the files listed, in that order;
+- a folder offers each of its Markdown files, up to 16 folders deep, as its own
+  book;
+- `files` makes one book of the Markdown files listed, each inside `path`, in
+  that order;
 - `book` makes each folder holding a file of that name one book, of the Markdown
   beside it and in the highest numbered folder `rounds` matches, its first
   group read as the number.
 
 `tab` names the library folder and the page's tab, `notes` when left out. A route
-is read and never written, and unticking a book deletes the copy that was made.
+is read and never written, and unticking a book deletes the copy that was made. A
+file or folder the helper cannot read is left out of the list.
 
 ### What the helper cannot do
 
-`ink-send` holds no code that starts a program or opens a connection, and
-[a test](cmd/ink-send/main_test.go) fails if either ever enters it, so no setting
-and no message can make it do either. The browser names a book from the helper's
-own last list and a transmitter by name, never a path. Every file is read through
-a root that no link or `..` leaves, hidden folders and other git checkouts are
-skipped, and a route as wide as the home folder or the whole disk is refused.
+`ink-send` holds no code that starts a program or opens a connection, and [a
+test](cmd/ink-send/main_test.go) fails if the standard library's code for either
+ever enters it. Every file it reads or writes, in the library, the sync folder
+and the routes, goes through a root that no name or link can leave, and it
+opens only plain files. The browser names a library book by its name in the
+library, at most one folder deep, or a route book by an id from the helper's own
+walk, never a path, and a route holding the home folder or the whole disk is
+refused.
 
 ## Rules
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -26,10 +27,10 @@ func setup(t *testing.T) folders {
 	t.Helper()
 	root := t.TempDir()
 	f := folders{
-		Library: filepath.Join(root, "library"), Downloads: filepath.Join(root, "downloads"),
-		Transmitters: []transmitter{{Name: "Tablet", Folder: filepath.Join(root, "outbox")}},
+		Library: filepath.Join(root, "library"),
+		Sync:    filepath.Join(root, "sync"),
 	}
-	for _, d := range []string{f.Library, f.Transmitters[0].Folder, f.Downloads} {
+	for _, d := range []string{f.Library, f.Sync} {
 		if err := os.Mkdir(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -86,17 +87,15 @@ func TestLoad(t *testing.T) {
 	if _, err := load(path); err == nil || !strings.Contains(err.Error(), path) {
 		t.Errorf("a missing config file gave %v", err)
 	}
-	put(t, path, `{"library":"~/Books","transmitters":[{"name":"T","folder":"~/out"},{"name":"U","folder":"/mnt/out"}]}`)
+	put(t, path, `{"library":"~/Books","sync":"~/Sync/books"}`)
 	f, err := load(path)
-	if err != nil || f.Library != "/home/reader/Books" || f.Downloads != "" || f.Transmitters[0].Folder != "/home/reader/out" ||
-		f.Transmitters[1].Folder != "/mnt/out" {
+	if err != nil || f.Library != "/home/reader/Books" || f.Sync != "/home/reader/Sync/books" {
 		t.Errorf("got %+v, %v", f, err)
 	}
 	for _, bad := range []string{
 		`{"library":"Books"}`,
-		`{"library":"/Books","transmitters":[{"name":"T","folder":"out"}]}`,
-		`{"library":"/Books","transmitters":[{"folder":"/out"}]}`,
-		`{"library":"/Books","downloads":"dl"}`,
+		`{}`,
+		`{"library":"/Books","sync":"out"}`,
 	} {
 		put(t, path, bad)
 		if _, err := load(path); err == nil {
@@ -105,18 +104,48 @@ func TestLoad(t *testing.T) {
 	}
 }
 
-func TestSendLinksTheBook(t *testing.T) {
+func TestSendCopiesTheBook(t *testing.T) {
 	f := setup(t)
 	put(t, filepath.Join(f.Library, "a.epub"), "a")
 	for range 2 {
-		if err := f.send("a.epub", "Tablet"); err != nil {
+		if err := f.send("a.epub"); err != nil {
 			t.Fatal(err)
 		}
 	}
-	lib, _ := os.Stat(filepath.Join(f.Library, "a.epub"))
-	out, err := os.Stat(filepath.Join(f.Transmitters[0].Folder, "a.epub"))
-	if err != nil || !os.SameFile(lib, out) {
-		t.Errorf("the outbox holds no link to the book: %v", err)
+	if b, err := os.ReadFile(filepath.Join(f.Sync, "a.epub")); err != nil || string(b) != "a" {
+		t.Errorf("the sync folder holds %q, %v", b, err)
+	}
+	if entries, _ := os.ReadDir(f.Sync); len(entries) != 1 {
+		t.Errorf("a temporary file stayed behind: %v", entries)
+	}
+}
+
+// With no sync folder set, or one that is not there, nothing is sent and no
+// folder is made; an unsend and a delete have nothing to take from it.
+func TestNoSyncFolder(t *testing.T) {
+	f := setup(t)
+	put(t, filepath.Join(f.Library, "a.epub"), "a")
+	gone := filepath.Join(t.TempDir(), "usb", "books")
+	for _, sync := range []string{"", gone} {
+		f.Sync = sync
+		if err := f.send("a.epub"); err == nil || exists(gone) {
+			t.Errorf("sync %q: a send went through, made %v", sync, exists(gone))
+		}
+		if err := f.unsend("a.epub"); (err != nil) != (sync != "") {
+			t.Errorf("sync %q: an unsend: %v", sync, err)
+		}
+		if books, _, err := f.list(); err != nil || len(books) != 1 || books[0].Sent {
+			t.Errorf("sync %q: list %+v, %v", sync, books, err)
+		}
+	}
+	// A sync folder that is set but not there refuses a delete, which would leave
+	// its copy with nothing to take it back; with none set the delete goes ahead.
+	if err := f.remove("a.epub"); err == nil || !exists(filepath.Join(f.Library, "a.epub")) {
+		t.Errorf("a delete with the sync folder not there: %v", err)
+	}
+	f.Sync = ""
+	if err := f.remove("a.epub"); err != nil || exists(filepath.Join(f.Library, "a.epub")) {
+		t.Errorf("a delete with no sync folder set: %v", err)
 	}
 }
 
@@ -152,7 +181,7 @@ func TestBadNamesAreRefused(t *testing.T) {
 	put(t, filepath.Join(f.Library, ".ink", "side.epub"), "side")
 	// Only the first of these gets past every check but the one on a path.
 	for _, name := range []string{"sub/../../secret.epub", "", ".", "..", "../secret.epub", "/etc/passwd", "sub/a.epub", "notes.txt", ".hidden.epub", "link.epub", "dir.epub", "missing.epub", "linked/secret.epub", "a/b/deep.epub", ".ink/side.epub", "/secret.epub"} {
-		if err := f.send(name, "Tablet"); err == nil {
+		if err := f.send(name); err == nil {
 			t.Errorf("send(%q) was accepted", name)
 		}
 		if err := f.remove(name); err == nil {
@@ -160,7 +189,7 @@ func TestBadNamesAreRefused(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"", "..", "../secret.epub", "../library/notes.txt", "notes.txt", ".hidden.epub"} {
-		if err := f.unsend(name, "Tablet"); err == nil {
+		if err := f.unsend(name); err == nil {
 			t.Errorf("unsend(%q) was accepted", name)
 		}
 	}
@@ -169,24 +198,24 @@ func TestBadNamesAreRefused(t *testing.T) {
 			t.Errorf("%s is gone", kept)
 		}
 	}
-	if entries, _ := os.ReadDir(f.Transmitters[0].Folder); len(entries) != 0 {
-		t.Errorf("the outbox holds %v", entries)
+	if entries, _ := os.ReadDir(f.Sync); len(entries) != 0 {
+		t.Errorf("the sync folder holds %v", entries)
 	}
 }
 
 func TestUnsendKeepsTheBook(t *testing.T) {
 	f := setup(t)
 	put(t, filepath.Join(f.Library, "a.epub"), "a")
-	if err := f.send("a.epub", "Tablet"); err != nil {
+	if err := f.send("a.epub"); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {
-		if err := f.unsend("a.epub", "Tablet"); err != nil {
+		if err := f.unsend("a.epub"); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if exists(filepath.Join(f.Transmitters[0].Folder, "a.epub")) || !exists(filepath.Join(f.Library, "a.epub")) {
-		t.Error("unsend did not take the book out of the outbox alone")
+	if exists(filepath.Join(f.Sync, "a.epub")) || !exists(filepath.Join(f.Library, "a.epub")) {
+		t.Error("unsend did not take the book out of the sync folder alone")
 	}
 }
 
@@ -196,60 +225,16 @@ func TestRemoveTakesEveryCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.send("a.epub", "Tablet"); err != nil {
+	if err := f.send("a.epub"); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.remove("a.epub"); err != nil {
 		t.Fatal(err)
 	}
-	for _, gone := range []string{path, filepath.Join(f.Transmitters[0].Folder, "a.epub"), filepath.Join(f.Library, folder.SidecarDir, "a.epub.json")} {
+	for _, gone := range []string{path, filepath.Join(f.Sync, "a.epub"), filepath.Join(f.Library, folder.SidecarDir, "a.epub.json")} {
 		if exists(gone) {
 			t.Errorf("%s is still there", gone)
 		}
-	}
-}
-
-func TestCollect(t *testing.T) {
-	f := setup(t)
-	put(t, filepath.Join(f.Library, "same.epub"), "old")
-	put(t, filepath.Join(f.Library, "same-1.epub"), "old too")
-	put(t, filepath.Join(f.Downloads, "new.epub"), "new")
-	put(t, filepath.Join(f.Downloads, "same.epub"), "second")
-	put(t, filepath.Join(f.Downloads, "writing.epub"), "")
-	put(t, filepath.Join(f.Downloads, "new.epub.part"), "partial")
-	moved, err := f.collect()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(moved) != 1 || moved["same.epub"] != "same-2.epub" {
-		t.Errorf("moved %v", moved)
-	}
-	if b, _ := os.ReadFile(filepath.Join(f.Library, "same.epub")); string(b) != "old" {
-		t.Errorf("a collected book overwrote one in the library: %q", b)
-	}
-	if b, _ := os.ReadFile(filepath.Join(f.Library, "same-2.epub")); string(b) != "second" {
-		t.Errorf("same-2.epub holds %q", b)
-	}
-	if !exists(filepath.Join(f.Library, "new.epub")) || exists(filepath.Join(f.Downloads, "new.epub")) {
-		t.Error("new.epub did not move")
-	}
-	if exists(filepath.Join(f.Library, "writing.epub")) || !exists(filepath.Join(f.Downloads, "writing.epub")) {
-		t.Error("an empty file, still downloading, moved")
-	}
-	if exists(filepath.Join(f.Library, "new.epub.part")) {
-		t.Error("a partial file moved")
-	}
-}
-
-func TestCollectWithoutDownloads(t *testing.T) {
-	f := setup(t)
-	f.Downloads = ""
-	if moved, err := f.collect(); err != nil || moved != nil {
-		t.Errorf("no downloads folder set: %v, %v", moved, err)
-	}
-	f.Downloads = filepath.Join(f.Library, "missing")
-	if moved, err := f.collect(); err != nil || moved != nil {
-		t.Errorf("a missing downloads folder: %v, %v", moved, err)
 	}
 }
 
@@ -263,17 +248,17 @@ func TestList(t *testing.T) {
 	now := time.Now()
 	os.Chtimes(filepath.Join(f.Library, "with-sidecar.epub"), now, now.Add(-time.Hour))
 	os.Chtimes(filepath.Join(f.Library, "plain.pdf"), now, now)
-	if err := f.send("plain.pdf", "Tablet"); err != nil {
+	if err := f.send("plain.pdf"); err != nil {
 		t.Fatal(err)
 	}
 	books, more, err := f.list()
 	if err != nil || more != 0 || len(books) != 2 {
 		t.Fatalf("got %+v, more %d, %v", books, more, err)
 	}
-	if books[0].Name != "plain.pdf" || len(books[0].Sent) != 1 || books[0].Sent[0] != "Tablet" || books[0].Title != "" || books[0].Size != 1 {
+	if books[0].Name != "plain.pdf" || !books[0].Sent || books[0].Title != "" || books[0].Size != 1 {
 		t.Errorf("newest book is %+v", books[0])
 	}
-	if b := books[1]; b.Name != "with-sidecar.epub" || b.Sent != nil || b.Title != "A title" || b.Source != "https://example.org/a" {
+	if b := books[1]; b.Name != "with-sidecar.epub" || b.Sent || b.Title != "A title" || b.Source != "https://example.org/a" {
 		t.Errorf("older book is %+v", b)
 	}
 }
@@ -310,20 +295,14 @@ func TestAnswer(t *testing.T) {
 	config := filepath.Join(t.TempDir(), "folders.json")
 	c, _ := json.Marshal(f)
 	put(t, config, string(c))
-	put(t, filepath.Join(f.Downloads, "a.epub"), "a")
+	put(t, filepath.Join(f.Library, "a.epub"), "a")
 	if res := answer(message(`{"action":"list"}`), config); !res.OK || len(res.Books) != 1 || res.Books[0].Name != "a.epub" {
 		t.Errorf("list: %+v", res)
 	}
-	if res := answer(message(`{"action":"list"}`), config); len(res.Transmitters) != 1 || res.Transmitters[0] != "Tablet" {
-		t.Errorf("list names no transmitter: %+v", res)
-	}
-	if res := answer(message(`{"action":"send","file":"a.epub","to":"Nobody"}`), config); res.OK || exists(filepath.Join(f.Transmitters[0].Folder, "a.epub")) {
-		t.Errorf("send to a transmitter nobody wrote: %+v", res)
-	}
-	if res := answer(message(`{"action":"send","file":"a.epub","to":"Tablet"}`), config); !res.OK || !exists(filepath.Join(f.Transmitters[0].Folder, "a.epub")) {
+	if res := answer(message(`{"action":"send","file":"a.epub"}`), config); !res.OK || !exists(filepath.Join(f.Sync, "a.epub")) {
 		t.Errorf("send: %+v", res)
 	}
-	if res := answer(message(`{"action":"unsend","file":"a.epub","to":"Tablet"}`), config); !res.OK || exists(filepath.Join(f.Transmitters[0].Folder, "a.epub")) {
+	if res := answer(message(`{"action":"unsend","file":"a.epub"}`), config); !res.OK || exists(filepath.Join(f.Sync, "a.epub")) {
 		t.Errorf("unsend: %+v", res)
 	}
 	if res := answer(message(`{"action":"delete","file":"a.epub"}`), config); !res.OK || exists(filepath.Join(f.Library, "a.epub")) {
@@ -336,19 +315,19 @@ func TestAnswer(t *testing.T) {
 	}
 }
 
-// A stage's own folder: listed, sent to the same folder in the transmitter, and
+// A stage's own folder: listed, sent to the same folder in the sync folder, and
 // its sidecar found.
 func TestBooksInAFolder(t *testing.T) {
 	f := setup(t)
 	if _, err := folder.Put(filepath.Join(f.Library, "reviews"), "r.epub", []byte("r"), folder.Meta{Title: "R"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.send("reviews/r.epub", "Tablet"); err != nil {
+	if err := f.send("reviews/r.epub"); err != nil {
 		t.Fatal(err)
 	}
-	out := filepath.Join(f.Transmitters[0].Folder, "reviews", "r.epub")
+	out := filepath.Join(f.Sync, "reviews", "r.epub")
 	books, _, err := f.list()
-	if err != nil || len(books) != 1 || books[0].Name != "reviews/r.epub" || books[0].Title != "R" || len(books[0].Sent) != 1 || !exists(out) {
+	if err != nil || len(books) != 1 || books[0].Name != "reviews/r.epub" || books[0].Title != "R" || !books[0].Sent || !exists(out) {
 		t.Fatalf("got %+v, %v", books, err)
 	}
 	if err := f.remove("reviews/r.epub"); err != nil {
@@ -361,57 +340,44 @@ func TestBooksInAFolder(t *testing.T) {
 	}
 }
 
-func TestEveryTransmitterIsItsOwn(t *testing.T) {
-	f := setup(t)
-	second := filepath.Join(t.TempDir(), "usb")
-	f.Transmitters = append(f.Transmitters, transmitter{Name: "USB", Folder: second})
-	put(t, filepath.Join(f.Library, "a.epub"), "a")
-	if err := f.send("a.epub", "USB"); err != nil {
-		t.Fatal(err)
-	}
-	if exists(filepath.Join(f.Transmitters[0].Folder, "a.epub")) || !exists(filepath.Join(second, "a.epub")) {
-		t.Error("the book went to the wrong transmitter")
-	}
-	if err := f.unsend("a.epub", "Tablet"); err != nil || !exists(filepath.Join(second, "a.epub")) {
-		t.Errorf("unsend from one took it from the other: %v", err)
-	}
-	if err := f.remove("a.epub"); err != nil || exists(filepath.Join(second, "a.epub")) {
-		t.Errorf("remove left a copy behind: %v", err)
-	}
-}
-
-// A book replaced in the library reaches the transmitter on the next send: a link
+// A book replaced in the library reaches the sync folder on the next send: a link
 // keeps the old file.
 func TestSendReplacesAnOlderBook(t *testing.T) {
 	f := setup(t)
 	if _, err := folder.Put(f.Library, "a.epub", []byte("old"), folder.Meta{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.send("a.epub", "Tablet"); err != nil {
+	if err := f.send("a.epub"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := folder.Put(f.Library, "a.epub", []byte("new"), folder.Meta{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.send("a.epub", "Tablet"); err != nil {
+	if err := f.send("a.epub"); err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := os.ReadFile(filepath.Join(f.Transmitters[0].Folder, "a.epub")); string(b) != "new" {
-		t.Errorf("the transmitter holds %q", b)
+	if b, _ := os.ReadFile(filepath.Join(f.Sync, "a.epub")); string(b) != "new" {
+		t.Errorf("the sync folder holds %q", b)
 	}
 }
 
 // The design's own guard: no setting or message can start a program or open a
 // connection if the program holds no code for either, directly or below it.
 func TestCannotLaunchOrConnect(t *testing.T) {
-	out, err := exec.Command("go", "list", "-deps", ".").Output()
+	bin := filepath.Join(t.TempDir(), "ink-send")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	out, err := exec.Command("go", "tool", "nm", bin).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, pkg := range strings.Fields(string(out)) {
-		switch pkg {
-		case "os/exec", "net", "net/http", "plugin", "syscall/js":
-			t.Errorf("ink-send depends on %s", pkg)
+	// Whatever package it came through, the code to start a program or open a
+	// connection would show as one of these symbols in the program itself.
+	held := regexp.MustCompile(`\s(os\.StartProcess|os/exec\.|(syscall|golang\.org/x/sys/unix)\.(forkExec|ForkExec|StartProcess|Exec|[Ss]ocket|[Cc]onnect)\b|net\.|plugin\.)`)
+	for _, line := range strings.Split(string(out), "\n") {
+		if m := held.FindString(line); m != "" {
+			t.Errorf("ink-send holds %s", strings.TrimSpace(m))
 		}
 	}
 }
@@ -433,7 +399,7 @@ func TestWriteDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	f, err := load(path)
-	if err != nil || !exists(f.Library) || f.Library != filepath.Join(home, "Books") {
+	if err != nil || !exists(f.Library) || f.Library != filepath.Join(home, "Downloads", "ink-drop") {
 		t.Errorf("defaults gave %+v, %v", f, err)
 	}
 	if info, err := os.Stat(f.Library); err != nil || info.Mode().Perm() != 0o700 {
@@ -465,5 +431,196 @@ func TestRegister(t *testing.T) {
 	if err := json.Unmarshal(b, &m); err != nil || m.Name != hostName || m.Type != "stdio" || !filepath.IsAbs(m.Path) ||
 		len(m.AllowedExtensions) != 1 || m.AllowedExtensions[0] != extensionID || filepath.Base(path) != hostName+".json" {
 		t.Errorf("manifest %s: %+v, %v", path, m, err)
+	}
+}
+
+// A sidecar naming another book gives this one no title.
+func TestSidecarNamesItsBook(t *testing.T) {
+	f := setup(t)
+	put(t, filepath.Join(f.Library, "a.epub"), "a")
+	os.Mkdir(filepath.Join(f.Library, folder.SidecarDir), 0o755)
+	put(t, filepath.Join(f.Library, folder.SidecarDir, "a.epub.json"), `{"schema":1,"file":"b.epub","title":"Not a"}`)
+	if books, _, err := f.list(); err != nil || len(books) != 1 || books[0].Title != "" {
+		t.Errorf("got %+v, %v", books, err)
+	}
+}
+
+// The library and the sync folder may not overlap: unticking would delete
+// library books.
+func TestFoldersMustNotOverlap(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "folders.json")
+	for _, bad := range []string{
+		`{"library":"/b","sync":"/b"}`,
+		`{"library":"/b","sync":"/b/out"}`,
+		`{"library":"/b/lib","sync":"/b"}`,
+	} {
+		put(t, path, bad)
+		if _, err := load(path); err == nil {
+			t.Errorf("%s was accepted", bad)
+		}
+	}
+	put(t, path, `{"library":"/b","sync":"/s"}`)
+	if _, err := load(path); err != nil {
+		t.Errorf("separate folders: %v", err)
+	}
+}
+
+// Only a plain book file is listed, never a link or a folder of that name, and a
+// sidecar of another schema gives no title.
+func TestListOnlyPlainBooks(t *testing.T) {
+	f := setup(t)
+	put(t, filepath.Join(f.Library, "a.epub"), "a")
+	os.Symlink(filepath.Join(f.Library, "a.epub"), filepath.Join(f.Library, "link.epub"))
+	os.Mkdir(filepath.Join(f.Library, "dir.epub"), 0o755)
+	os.Mkdir(filepath.Join(f.Library, folder.SidecarDir), 0o755)
+	put(t, filepath.Join(f.Library, folder.SidecarDir, "a.epub.json"), `{"schema":99,"file":"a.epub","title":"Old"}`)
+	books, _, err := f.list()
+	if err != nil || len(books) != 1 || books[0].Name != "a.epub" || books[0].Title != "" {
+		t.Errorf("got %+v, %v", books, err)
+	}
+}
+
+// A send that cannot land leaves no temporary file behind.
+func TestFailedSendLeavesNoTemp(t *testing.T) {
+	f := setup(t)
+	put(t, filepath.Join(f.Library, "a.epub"), "a")
+	os.Mkdir(filepath.Join(f.Sync, "a.epub"), 0o755)
+	put(t, filepath.Join(f.Sync, "a.epub", "keep"), "k")
+	if err := f.send("a.epub"); err == nil {
+		t.Error("a send replaced a folder")
+	}
+	if entries, _ := os.ReadDir(f.Sync); len(entries) != 1 {
+		t.Errorf("the sync folder holds %v", entries)
+	}
+}
+
+// A route never overlaps a folder ink-send writes to, so no book lands in it.
+func TestRoutesDoNotOverlapFolders(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "folders.json")
+	for _, bad := range []string{
+		`{"library":"/b","routes":[{"path":"/b/notes"}]}`,
+		`{"library":"/b/lib","routes":[{"path":"/b"}]}`,
+		`{"library":"/b","sync":"/s","routes":[{"path":"/s/notes"}]}`,
+	} {
+		put(t, path, bad)
+		if _, err := load(path); err == nil {
+			t.Errorf("%s was accepted", bad)
+		}
+	}
+}
+
+// A library book whose name starts like a route id is still sent as a book.
+func TestBookNamedLikeARoute(t *testing.T) {
+	f := setup(t)
+	put(t, filepath.Join(f.Library, "route:x.epub"), "r")
+	if _, err := f.handle(request{Action: "send", File: "route:x.epub"}); err != nil || !exists(filepath.Join(f.Sync, "route:x.epub")) {
+		t.Errorf("send: %v", err)
+	}
+}
+
+// Untick takes back only a book the library holds: a file put in the sync folder
+// by hand stays.
+func TestUnsendOnlyLibraryBooks(t *testing.T) {
+	f := setup(t)
+	put(t, filepath.Join(f.Sync, "mine.epub"), "mine")
+	if _, err := f.handle(request{Action: "unsend", File: "mine.epub"}); err == nil || !exists(filepath.Join(f.Sync, "mine.epub")) {
+		t.Errorf("a file the library never held was taken: %v", err)
+	}
+	put(t, filepath.Join(f.Library, "a.epub"), "a")
+	f.send("a.epub")
+	if _, err := f.handle(request{Action: "unsend", File: "a.epub"}); err != nil || exists(filepath.Join(f.Sync, "a.epub")) {
+		t.Errorf("a library book was not taken back: %v", err)
+	}
+}
+
+// Untick refuses a name the library does not hold as a plain book, through a
+// linked folder included.
+func TestUnsendRefusesLinkedLibraryNames(t *testing.T) {
+	f := setup(t)
+	os.Mkdir(filepath.Join(f.Library, "real"), 0o755)
+	put(t, filepath.Join(f.Library, "real", "x.epub"), "x")
+	os.Symlink("real", filepath.Join(f.Library, "linkdir"))
+	os.Mkdir(filepath.Join(f.Sync, "linkdir"), 0o755)
+	put(t, filepath.Join(f.Sync, "linkdir", "x.epub"), "by hand")
+	os.Mkdir(filepath.Join(f.Library, "dir.epub"), 0o755)
+	put(t, filepath.Join(f.Sync, "dir.epub"), "by hand")
+	for _, name := range []string{"linkdir/x.epub", "dir.epub"} {
+		if _, err := f.handle(request{Action: "unsend", File: name}); err == nil || !exists(filepath.Join(f.Sync, name)) {
+			t.Errorf("untick of %s: %v", name, err)
+		}
+	}
+}
+
+// A link to another folder inside the sync folder never lets two books share one
+// copy: a send through it is refused, and nothing through it counts as sent.
+func TestSyncFolderLinkInside(t *testing.T) {
+	f := setup(t)
+	for _, d := range []string{"a", "b"} {
+		os.Mkdir(filepath.Join(f.Library, d), 0o755)
+		put(t, filepath.Join(f.Library, d, "x.epub"), d)
+	}
+	os.Mkdir(filepath.Join(f.Sync, "b"), 0o755)
+	os.Symlink("b", filepath.Join(f.Sync, "a"))
+	if err := f.send("b/x.epub"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.send("a/x.epub"); err == nil {
+		t.Error("a send went through a link inside the sync folder")
+	}
+	if b, _ := os.ReadFile(filepath.Join(f.Sync, "b", "x.epub")); string(b) != "b" {
+		t.Errorf("b's copy holds %q", b)
+	}
+	books, _, _ := f.list()
+	for _, bk := range books {
+		if bk.Name == "a/x.epub" && bk.Sent {
+			t.Error("a book seen through a link counts as sent")
+		}
+	}
+	if err := f.unsend("a/x.epub"); err == nil || !exists(filepath.Join(f.Sync, "b", "x.epub")) {
+		t.Errorf("an unsend through a link: %v", err)
+	}
+}
+
+// A sidecar that cannot be removed stops a delete, so no later book takes its title.
+func TestDeleteNeedsTheSidecarGone(t *testing.T) {
+	f := setup(t)
+	put(t, filepath.Join(f.Library, "a.epub"), "a")
+	os.MkdirAll(filepath.Join(f.Library, folder.SidecarDir, "a.epub.json", "inside"), 0o755)
+	if err := f.remove("a.epub"); err == nil {
+		t.Error("a delete left its sidecar behind")
+	}
+}
+
+// Deleting a book never removes another book's sidecar through a linked folder.
+func TestDeleteKeepsOtherSidecars(t *testing.T) {
+	f := setup(t)
+	if _, err := folder.Put(f.Library, "x.epub", []byte("x"), folder.Meta{Title: "Root"}); err != nil {
+		t.Fatal(err)
+	}
+	os.Mkdir(filepath.Join(f.Library, "sub"), 0o755)
+	put(t, filepath.Join(f.Library, "sub", "x.epub"), "s")
+	os.Symlink("../"+folder.SidecarDir, filepath.Join(f.Library, "sub", folder.SidecarDir))
+	if err := f.remove("sub/x.epub"); err == nil {
+		t.Error("a delete went through a linked sidecar folder")
+	}
+	if !exists(filepath.Join(f.Library, folder.SidecarDir, "x.epub.json")) {
+		t.Error("another book's sidecar is gone")
+	}
+}
+
+// Two routes that overlap, or a setting this version does not know, are refused.
+func TestLoadRefusesOverlapAndUnknown(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "folders.json")
+	for _, bad := range []string{
+		`{"library":"/b","routes":[{"path":"/n"},{"path":"/n/r"}]}`,
+		`{"library":"/b","downloads":"/d"}`,
+		`{"library":"/b","transmitters":[]}`,
+	} {
+		put(t, path, bad)
+		if _, err := load(path); err == nil {
+			t.Errorf("%s was accepted", bad)
+		}
 	}
 }
