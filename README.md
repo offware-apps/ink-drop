@@ -62,14 +62,19 @@ later stage runs offline.
 ## The browser extension
 
 The [extension](extension/) saves the page you are reading as an EPUB through the
-browser's downloads, with nothing else installed. Load `extension/` as a temporary
-add-on from `about:debugging` in Firefox.
+browser's downloads, with nothing else installed. To load it, open
+`about:debugging#/runtime/this-firefox` in Firefox, click *Load Temporary
+Add-on* and pick `extension/manifest.json`. Firefox keeps a
+[temporary add-on](https://extension-workshop.com/documentation/develop/temporary-installation-in-firefox/)
+until it restarts.
 
-Its library page lists every book in one place, with a tab per folder, a search
-and a sort, and a box to tick for each book you want on your reader. That page
-needs [`ink-send`](cmd/ink-send/main.go), a small helper Firefox starts for each
-request. `ink-send -install` registers it for your user and writes its settings
-to `~/.config/ink-drop/folders.json`:
+Its library page lists every book in one place, with a tab per folder, a search,
+a sort, a box to tick for each book you want on your reader and a bin to delete
+one. Without its helper it lists only the pages the extension saved. The helper
+is [`ink-send`](cmd/ink-send/main.go), a small program Firefox starts for each
+request: it lists the whole library, sends a ticked book and backs the *Send*
+button the popup shows after a save. `ink-send -install` registers it for your
+user and writes its settings to `~/.config/ink-drop/folders.json`:
 
 ```json
 {
@@ -91,8 +96,9 @@ the library page needs `library` set to match.
 ### The sync folder
 
 `sync` is the one folder your sync tool sends to the reader, a Syncthing folder
-for one. Ticking a book copies it there and unticking removes it. ink-drop never
-sends anything itself: the sync tool does, when you let it run.
+for one. Ticking a book, or *Send* in the popup, copies it there, and unticking
+removes it. ink-drop never sends anything itself: the sync tool does, when you
+let it run.
 
 ### Routes
 
@@ -110,7 +116,10 @@ one:
 
 `tab` names the library folder and the page's tab, `notes` when left out. A route
 is read and never written, and unticking a book deletes the copy that was made. A
-file or folder the helper cannot read is left out of the list.
+file or folder the helper cannot read is left out of the list, and so is a book
+over [1 MiB of Markdown](cmd/ink-send/routes.go#L57). A book that takes more
+than [20 seconds or 512 MB](cmd/ink-send/routes.go#L447-L448) to make is
+refused.
 
 ### What the helper cannot do
 
