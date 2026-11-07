@@ -3,14 +3,15 @@
 const api = globalThis.browser ?? globalThis.chrome;
 
 // folder is created under the browser's download folder.
-const DEFAULTS = { folder: "ink-drop", items: [] };
+const DEFAULTS = { folder: "ink-drop", items: [], transmitter: "", sort: "newest" };
 
-// host asks the ink-send helper to list the library, or to send, unsend or
-// delete one file, and returns its reply.
-async function host(action, file) {
+// host asks the ink-send helper to list the library, or to send, unsend or delete
+// one file, and returns its reply. Without `to`, the helper takes its first
+// transmitter.
+async function host(action, file, to) {
   let res;
   try {
-    res = await api.runtime.sendNativeMessage("ink_drop", { action, file });
+    res = await api.runtime.sendNativeMessage("ink_drop", { action, file, to });
   } catch {
     throw new Error("The ink-send helper is not installed. Run: ink-send -install");
   }

@@ -4,6 +4,9 @@
 const $ = (id) => document.getElementById(id);
 let items = [];
 let helper = false;
+let transmitters = [];
+let target = "";
+let tab = "";
 
 function h(tag, props = {}, ...children) {
   const el = Object.assign(document.createElement(tag), props);
@@ -23,6 +26,7 @@ function when(ms) {
 async function load() {
   const s = await api.storage.local.get(DEFAULTS);
   $("folder").value = s.folder;
+  $("sort").value = s.sort;
   let res;
   try {
     res = await host("list");
@@ -32,6 +36,10 @@ async function load() {
     $("status").textContent = err.message;
   }
   if (res) {
+    transmitters = res.transmitters ?? [];
+    target = transmitters.includes(s.transmitter) ? s.transmitter : (transmitters[0] ?? "");
+    $("target").hidden = transmitters.length < 2;
+    $("target").replaceChildren(...transmitters.map((name) => h("option", { value: name, textContent: name, selected: name === target })));
     if (res.moved && s.items.some((i) => res.moved[i.file])) {
       s.items.forEach((i) => (i.file = res.moved[i.file] ?? i.file));
       await api.storage.local.set({ items: s.items });
@@ -54,14 +62,17 @@ function fromBook(b, page) {
   const url = page?.url || b.source || "";
   return {
     name: b.name,
-    sent: b.sent,
+    folder: b.folder ?? "",
+    route: b.route === true,
+    where: b.where ?? "",
+    sent: b.sent ?? [],
     size: b.size,
     url,
     title: page?.title || b.title || b.name,
     excerpt: page?.excerpt || "",
     minutes: page?.minutes,
     saved: page?.saved || b.modified,
-    site: page?.site || hostname(url),
+    site: page?.site || hostname(url) || b.where || "",
   };
 }
 
@@ -79,18 +90,41 @@ function megabytes(bytes) {
 
 function render() {
   const q = $("search").value.trim().toLowerCase();
-  const shown = items.filter((i) => !q || `${i.title} ${i.site} ${i.excerpt}`.toLowerCase().includes(q));
+  renderTabs();
+  const shown = items.filter(
+    (i) => (!tab || i.folder === tab) && (!q || `${i.title} ${i.site} ${i.excerpt}`.toLowerCase().includes(q)),
+  );
+  // Name sorts by title, numbers in order: 99 before 100.
+  if ($("sort").value === "name") {
+    shown.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" }));
+  }
   $("count").textContent = items.length ? String(q ? `${shown.length} / ${items.length}` : items.length) : "";
   $("empty").hidden = items.length > 0;
   $("items").replaceChildren(...shown.map(row));
+}
+
+// renderTabs shows one tab per folder of the library, once there is one.
+function renderTabs() {
+  const folders = [...new Set(items.map((i) => i.folder).filter(Boolean))].sort();
+  if (!folders.includes(tab)) tab = "";
+  $("tabs").hidden = folders.length === 0;
+  $("tabs").replaceChildren(
+    ...["", ...folders].map((name) => {
+      const b = h("button", { textContent: name ? name[0].toUpperCase() + name.slice(1) : "All" });
+      b.setAttribute("aria-pressed", String(name === tab));
+      b.addEventListener("click", () => {
+        tab = name;
+        render();
+      });
+      return b;
+    }),
+  );
 }
 
 // Icon paths, 24×24, drawn as strokes.
 const ICONS = {
   folder: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
   trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
-  send: "M12 19V5M5 12l7-7 7 7",
-  unsend: "M6 6l12 12M18 6L6 18",
 };
 
 function icon(label, path, onClick, disabled = false) {
@@ -104,6 +138,15 @@ function icon(label, path, onClick, disabled = false) {
   b.setAttribute("aria-label", label);
   b.addEventListener("click", onClick);
   return b;
+}
+
+// tick is the box that puts a book in the chosen transmitter's folder, or takes
+// it back out.
+function tick(it) {
+  const box = h("input", { type: "checkbox", checked: it.sent.includes(target), title: `Send to ${target}` });
+  box.setAttribute("aria-label", `Send ${it.title} to ${target}`);
+  box.addEventListener("change", () => act(box.checked ? "send" : "unsend", it));
+  return box;
 }
 
 // row is one line per page: the title opens the original page, the icons show
@@ -120,25 +163,17 @@ function row(it) {
   return h(
     "li",
     { className: there ? "item" : "item gone" },
-    h("span", { className: "avatar", textContent: (site || it.title).charAt(0).toUpperCase() }),
+    helper && target ? tick(it) : h("span", { className: "avatar", textContent: (site || it.title).charAt(0).toUpperCase() }),
     open,
     h("span", {
       className: "sent",
-      textContent: it.sent ? "for tablet" : "",
-      title: it.sent ? "In the tablet folder. It arrives when sync is on." : "",
+      textContent: it.sent.join(", "),
     }),
     h("span", { className: "site", textContent: site }),
     h("span", { className: "num", textContent: there ? length : "file missing" }),
     h("span", { className: "num when", textContent: when(it.saved) }),
     helper
-      ? h(
-          "span",
-          { className: "tools" },
-          it.sent
-            ? icon("Take back from the tablet", ICONS.unsend, () => act("unsend", it))
-            : icon("Send to tablet", ICONS.send, () => act("send", it)),
-          icon("Remove", ICONS.trash, () => removeItem(it)),
-        )
+      ? h("span", { className: "tools" }, it.route ? null : icon("Remove", ICONS.trash, () => removeItem(it)))
       : h(
           "span",
           { className: "tools" },
@@ -151,8 +186,9 @@ function row(it) {
 // act sends or unsends one book, then shows the library as it now is.
 async function act(action, it) {
   try {
-    await host(action, it.name);
+    await host(action, it.name, target);
     await load();
+    $("status").textContent = action === "send" ? `Sent to ${target}` : `Taken back from ${target}`;
   } catch (err) {
     $("status").textContent = err.message;
   }
@@ -178,6 +214,16 @@ async function removeItem(it) {
 }
 
 $("search").addEventListener("input", render);
+
+$("sort").addEventListener("change", async (e) => {
+  await api.storage.local.set({ sort: e.target.value });
+  render();
+});
+
+$("target").addEventListener("change", async (e) => {
+  await api.storage.local.set({ transmitter: e.target.value });
+  await load();
+});
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "/" && document.activeElement?.tagName !== "INPUT") {

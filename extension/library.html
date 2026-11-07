@@ -15,9 +15,15 @@
     </div>
     <div class="bar">
       <span class="muted" id="status" aria-live="polite"></span>
+      <select id="target" aria-label="Send to" hidden></select>
+      <select id="sort" aria-label="Sort by">
+        <option value="newest">Newest</option>
+        <option value="name">Name</option>
+      </select>
       <input type="search" id="search" placeholder="Search  /" aria-label="Search your library">
     </div>
   </header>
+  <div class="tabs" id="tabs" hidden></div>
   <ul class="items" id="items"></ul>
   <div class="empty" id="empty" hidden>
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5s-7 7.6-7 12.4a7 7 0 0 0 14 0c0-4.8-7-12.4-7-12.4z"/></svg>

@@ -67,7 +67,13 @@ input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); ou
 .library .bar #status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
 .library .bar button { padding: .35rem .7rem; font-size: 13px; white-space: nowrap; }
 .library header input { width: min(220px, 40vw); padding: .35rem .6rem; font-size: 13px; }
+.library header select { padding: .3rem .4rem; font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 5px; }
+.tabs { display: flex; gap: 4px; padding: 8px 0 2px; }
+.tabs button { padding: .25rem .6rem; font-size: 13px; background: transparent; color: var(--muted); font-weight: 500; }
+.tabs button:hover { background: var(--line); color: var(--ink); }
+.tabs button[aria-pressed="true"] { background: var(--line); color: var(--ink); font-weight: 600; }
 .items { list-style: none; margin: 4px 0 0; padding: 0; }
+.item input[type="checkbox"] { width: 16px; height: 16px; margin: 0; padding: 0; accent-color: var(--accent); cursor: pointer; }
 .item {
   display: grid; grid-template-columns: 18px minmax(0, 1fr) auto auto auto 66px; align-items: center; gap: 10px;
   height: 34px; padding: 0 8px; margin: 0 -8px; border-radius: 6px;

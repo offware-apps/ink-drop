@@ -1,13 +1,14 @@
 # ink-drop
 
-Web pages, PDFs and feeds, fetched into one folder that any e-reader reads
-offline.
+Web pages, PDFs, feeds and your own Markdown, made into books in one folder that
+any e-reader reads offline.
 
 ink-drop is a set of small command-line stages. Each one does a single job and
 hands its result to the next through a plain folder, whose shape is
-[the folder contract](docs/folder.md). The finished folder is the library:
-sync it to a Boox, a Kobo or any tablet with whatever already syncs there,
-Syncthing, WebDAV or a USB cable. Reading needs no network.
+[the folder contract](docs/folder.md). The finished folder is the library. A
+[browser extension](extension/) lists it, and a tick puts a book in the folder of
+whatever reaches your reader: Syncthing, WebDAV or a USB drive. Reading needs no
+network.
 
 > The French Wikipedia article on
 > [electronic paper](https://fr.wikipedia.org/wiki/Papier_%C3%A9lectronique),
@@ -34,6 +35,9 @@ go build -o bin/ ./cmd/...
 echo https://example.org/post | bin/ink-fetch | bin/ink-readable | bin/ink-epub -to ~/Books
 # 3. Turn the new posts of one site's feed into an EPUB digest
 echo https://go.dev/blog/ | bin/ink-feed | bin/ink-epub -to ~/Books
+# 4. Install the extension's helper, then load extension/ in Firefox
+go install github.com/offware-apps/ink-drop/cmd/ink-send@latest
+ink-send -install
 ```
 
 `ink-feed` takes a feed's address or a site's: given a page, it follows the
@@ -54,6 +58,67 @@ enables.
 A PDF needs no conversion: `ink-readable` passes it through and `ink-epub`
 copies it into the library. `ink-fetch` inlines a page's images, so every
 later stage runs offline.
+
+## The browser extension
+
+The [extension](extension/) saves the page you are reading as an EPUB through the
+browser's downloads, with nothing else installed. Load `extension/` as a temporary
+add-on from `about:debugging` in Firefox.
+
+Its library page lists every book in one place, with a tab per folder, a search
+and a sort, and a box to tick for each book you want on your reader. That page
+needs [`ink-send`](cmd/ink-send/main.go), a small helper Firefox starts for each
+request. `ink-send -install` registers it for your user and writes its settings
+to `~/.config/ink-drop/folders.json`:
+
+```json
+{
+  "library": "~/Books",
+  "downloads": "~/Downloads/ink-drop",
+  "transmitters": [
+    {"name": "Tablet", "folder": "~/Books/to-tablet"},
+    {"name": "USB", "folder": "/run/media/me/READER"}
+  ],
+  "routes": [
+    {"path": "~/notes/idea.md"},
+    {"path": "~/notes/recipes", "tab": "food"},
+    {"path": "~/notes/guide", "title": "My guide", "files": ["intro.md", "setup.md"]},
+    {"path": "~/work/reviews", "tab": "reviews", "book": "overview.md", "rounds": "^(\\d+)-"}
+  ]
+}
+```
+
+### Transmitters
+
+A transmitter is a folder that something sends on from, a sync tool or a mounted
+drive. Ticking a book hard-links it there, or copies it onto another drive, and
+unticking takes it back out. ink-drop never starts the sync: whatever watches the
+folder sends the book in its own time. With two transmitters or more, the page
+asks which one a tick is for.
+
+### Routes
+
+A route offers Markdown already on this machine as books, made only when you tick
+one:
+
+- a file is one book;
+- a folder offers each of its Markdown files, at any depth, as its own book;
+- `files` makes one book of the files listed, in that order;
+- `book` makes each folder holding a file of that name one book, of the Markdown
+  beside it and in the highest numbered folder `rounds` matches, its first
+  group read as the number.
+
+`tab` names the library folder and the page's tab, `notes` when left out. A route
+is read and never written, and unticking a book deletes the copy that was made.
+
+### What the helper cannot do
+
+`ink-send` holds no code that starts a program or opens a connection, and
+[a test](cmd/ink-send/main_test.go) fails if either ever enters it, so no setting
+and no message can make it do either. The browser names a book from the helper's
+own last list and a transmitter by name, never a path. Every file is read through
+a root that no link or `..` leaves, hidden folders and other git checkouts are
+skipped, and a route as wide as the home folder or the whole disk is refused.
 
 ## Rules
 

@@ -12,7 +12,7 @@ $("send").addEventListener("click", async () => {
   $("send").disabled = true;
   try {
     await host("send", saved.file);
-    show("good", "✓ Ready for the tablet", "It arrives when sync is on.");
+    show("good", "✓ Sent", "It leaves when your sync is on.");
   } catch (err) {
     show("bad", err.message);
     $("send").disabled = false;
