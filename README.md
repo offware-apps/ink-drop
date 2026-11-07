@@ -45,15 +45,19 @@ first feed the page names in a link tag. Nothing fetches feeds on its own:
 [docs/schedule.md](docs/schedule.md) sets up an hourly run that the user
 enables.
 
-## Stages
+## Commands
 
-| Stage | Job | State |
+| Command | Job | State |
 | --- | --- | --- |
 | [`ink-fetch`](cmd/ink-fetch/main.go) | Downloads each URL into the work folder | Built |
 | [`ink-readable`](cmd/ink-readable/main.go) | Strips each HTML item down to its article | Built |
 | [`ink-epub`](cmd/ink-epub/main.go) | Packs each HTML item into an EPUB in the library | Built |
-| [`ink-feed`](cmd/ink-feed/main.go) | Turns each RSS or Atom feed into one digest item | Built |
+| [`ink-feed`](cmd/ink-feed/main.go) | Turns the new entries of each RSS or Atom feed into one digest item | Built |
+| [`ink-send`](cmd/ink-send/main.go) | Lists the library for the browser extension and copies a ticked book to the sync folder | Built |
 | [`ink-mirror`](cmd/ink-mirror/main.go) | Crawls one site into a single HTML item | Not built |
+
+Every command but `ink-send` is a stage of the pipe. `ink-send` reads no
+stdin line: Firefox starts it for each request the extension makes.
 
 A PDF needs no conversion: `ink-readable` passes it through and `ink-epub`
 copies it into the library. `ink-fetch` inlines a page's images, so every
@@ -141,4 +145,4 @@ it runs outside any app and feeds one through plain files.
 
 ## License
 
-[AGPL-3.0](LICENSE).
+[MIT](LICENSE).
