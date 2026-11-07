@@ -38,7 +38,7 @@ if (!/^https?:/.test(tab?.url ?? "")) {
   if (res?.item) {
     saved = res.item;
     show("good", "✓ Saved for offline reading", `${res.item.minutes} min read`);
-    // Sending waits for the save, so no half-written book is linked.
+    // Sending waits for the save, so no half-written book is copied.
     $("send").disabled = false;
   } else {
     show("bad", res?.error || "Saving failed.");

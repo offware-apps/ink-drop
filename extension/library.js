@@ -4,8 +4,6 @@
 const $ = (id) => document.getElementById(id);
 let items = [];
 let helper = false;
-let transmitters = [];
-let target = "";
 let tab = "";
 
 function h(tag, props = {}, ...children) {
@@ -36,14 +34,6 @@ async function load() {
     $("status").textContent = err.message;
   }
   if (res) {
-    transmitters = res.transmitters ?? [];
-    target = transmitters.includes(s.transmitter) ? s.transmitter : (transmitters[0] ?? "");
-    $("target").hidden = transmitters.length < 2;
-    $("target").replaceChildren(...transmitters.map((name) => h("option", { value: name, textContent: name, selected: name === target })));
-    if (res.moved && s.items.some((i) => res.moved[i.file])) {
-      s.items.forEach((i) => (i.file = res.moved[i.file] ?? i.file));
-      await api.storage.local.set({ items: s.items });
-    }
     items = (res.books ?? []).map((b) => fromBook(b, s.items.find((i) => i.file === b.name)));
     $("status").textContent = res.more ? `${res.more} older books not shown` : "";
   } else {
@@ -65,7 +55,7 @@ function fromBook(b, page) {
     folder: b.folder ?? "",
     route: b.route === true,
     where: b.where ?? "",
-    sent: b.sent ?? [],
+    sent: b.sent === true,
     size: b.size,
     url,
     title: page?.title || b.title || b.name,
@@ -140,11 +130,10 @@ function icon(label, path, onClick, disabled = false) {
   return b;
 }
 
-// tick is the box that puts a book in the chosen transmitter's folder, or takes
-// it back out.
+// tick is the box that puts a book in the sync folder, or takes it back out.
 function tick(it) {
-  const box = h("input", { type: "checkbox", checked: it.sent.includes(target), title: `Send to ${target}` });
-  box.setAttribute("aria-label", `Send ${it.title} to ${target}`);
+  const box = h("input", { type: "checkbox", checked: it.sent, title: "Send to your reader" });
+  box.setAttribute("aria-label", `Send ${it.title} to your reader`);
   box.addEventListener("change", () => act(box.checked ? "send" : "unsend", it));
   return box;
 }
@@ -163,11 +152,12 @@ function row(it) {
   return h(
     "li",
     { className: there ? "item" : "item gone" },
-    helper && target ? tick(it) : h("span", { className: "avatar", textContent: (site || it.title).charAt(0).toUpperCase() }),
+    helper ? tick(it) : h("span", { className: "avatar", textContent: (site || it.title).charAt(0).toUpperCase() }),
     open,
     h("span", {
       className: "sent",
-      textContent: it.sent.join(", "),
+      textContent: it.sent ? "sent" : "",
+      title: it.sent ? "In the sync folder: it reaches your reader when the sync runs." : "",
     }),
     h("span", { className: "site", textContent: site }),
     h("span", { className: "num", textContent: there ? length : "file missing" }),
@@ -186,10 +176,11 @@ function row(it) {
 // act sends or unsends one book, then shows the library as it now is.
 async function act(action, it) {
   try {
-    await host(action, it.name, target);
+    await host(action, it.name);
     await load();
-    $("status").textContent = action === "send" ? `Sent to ${target}` : `Taken back from ${target}`;
+    $("status").textContent = action === "send" ? "Sent" : "Taken back";
   } catch (err) {
+    render();
     $("status").textContent = err.message;
   }
 }
@@ -218,11 +209,6 @@ $("search").addEventListener("input", render);
 $("sort").addEventListener("change", async (e) => {
   await api.storage.local.set({ sort: e.target.value });
   render();
-});
-
-$("target").addEventListener("change", async (e) => {
-  await api.storage.local.set({ transmitter: e.target.value });
-  await load();
 });
 
 document.addEventListener("keydown", (e) => {

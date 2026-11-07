@@ -2,8 +2,12 @@
 
 const IMAGE_TYPES = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
 
+// xmlChars drops the characters XML 1.0 forbids, which a page may carry and a
+// strict reader refuses the whole book over.
+const xmlChars = (s) => String(s ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "");
+
 const escapeXML = (s) =>
-  String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c]);
+  xmlChars(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c]);
 
 // buildEpub returns the EPUB for article a, whose images[i] is null when that
 // image could not be fetched, else { type, bytes }.
@@ -12,7 +16,7 @@ function buildEpub(a) {
   const modified = saved.toISOString().replace(/\.\d+Z$/, "Z");
   const files = [];
   const items = [];
-  let body = a.xhtml;
+  let body = xmlChars(a.xhtml);
   a.images.forEach((img, i) => {
     const placeholder = `src="ink-img-${i}"`;
     if (!img || !IMAGE_TYPES[img.type]) {

@@ -23,7 +23,7 @@ async function save(tabId) {
   const downloadId = await download(book, `${folder}/${slug(a.title)}.epub`);
   const item = {
     downloadId,
-    file: await inLibrary(await finished(downloadId)),
+    file: await finished(downloadId),
     title: a.title,
     url: a.url,
     site: new URL(a.url).hostname,
@@ -45,16 +45,6 @@ async function finished(id) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error("The browser took too long to save the book.");
-}
-
-// inLibrary moves the new book into the library and returns its name there.
-// Without the helper the book stays in the download folder, under the same name.
-async function inLibrary(file) {
-  try {
-    return (await host("list")).moved?.[file] ?? file;
-  } catch {
-    return file;
-  }
 }
 
 function decode(b64) {
