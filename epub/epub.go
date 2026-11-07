@@ -269,7 +269,7 @@ func pack(b Book, lang, text string, images []image) ([]byte, error) {
 		{"META-INF/container.xml", []byte(container)},
 		{"OEBPS/content.opf", []byte(opf(b, title, src, l, images))},
 		{"OEBPS/nav.xhtml", []byte(fmt.Sprintf(nav, l, l, title, title))},
-		{"OEBPS/text.xhtml", []byte(fmt.Sprintf(page, l, l, title, title, src, esc(host(b.Source)), text))},
+		{"OEBPS/text.xhtml", []byte(fmt.Sprintf(page, l, l, title, title, sourceLine(b.Source), text))},
 		{"OEBPS/style.css", []byte(style)},
 	}
 	for _, img := range images {
@@ -308,6 +308,15 @@ func id(source string) string {
 	h[6] = h[6]&0x0f | 0x50
 	h[8] = h[8]&0x3f | 0x80
 	return fmt.Sprintf("urn:uuid:%x-%x-%x-%x-%x", h[0:4], h[4:6], h[6:8], h[8:10], h[10:16])
+}
+
+// sourceLine links a book to where it came from, where that is an address a reader
+// can follow.
+func sourceLine(source string) string {
+	if source == "" || strings.HasPrefix(source, "#") || !safeHref(source) {
+		return ""
+	}
+	return fmt.Sprintf("<p><a href=\"%s\">%s</a></p>\n", esc(source), esc(host(source)))
 }
 
 func host(source string) string {
@@ -384,8 +393,7 @@ const page = `<?xml version="1.0" encoding="UTF-8"?>
 <head><meta charset="utf-8"/><title>%s</title><link rel="stylesheet" href="style.css"/></head>
 <body>
 <h1>%s</h1>
-<p><a href="%s">%s</a></p>
-%s
+%s%s
 </body>
 </html>
 `

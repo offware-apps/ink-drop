@@ -90,3 +90,27 @@ func TestIDStable(t *testing.T) {
 		t.Fatalf("ids %s %s", a, b)
 	}
 }
+
+// A source link appears only where it is an address a reader can follow.
+func TestSourceLink(t *testing.T) {
+	for source, want := range map[string]bool{
+		"https://example.org/a": true, "": false, "javascript:alert(1)": false, " javascript:alert(1)": false,
+		"file:///etc/passwd": false, "data:text/html,x": false, "#top": false,
+	} {
+		b, err := Build(Book{Title: "t", Source: source}, strings.NewReader("<p>x</p>"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		z, _ := zip.NewReader(bytes.NewReader(b), int64(len(b)))
+		for _, f := range z.File {
+			if f.Name != "OEBPS/text.xhtml" {
+				continue
+			}
+			r, _ := f.Open()
+			text, _ := io.ReadAll(r)
+			if got := strings.Contains(string(text), "<a href"); got != want {
+				t.Errorf("source %q: link %v", source, got)
+			}
+		}
+	}
+}
