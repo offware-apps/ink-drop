@@ -9,7 +9,9 @@ server, a tablet's own library.
 
 1. An item is one document, `<name>.epub`, `<name>.pdf` or `<name>.html`,
    with one JSON sidecar at `.ink/<name>.<ext>.json` in the same folder. The
-   hidden `.ink/` keeps sidecars out of a reader's book list.
+   hidden `.ink/` keeps sidecars out of a reader's book list. A stage may keep
+   its books in a folder of their own inside the library, one level down, with
+   its own `.ink/`.
 2. The sidecar is written before the document, and each file lands by rename
    from a temporary file. A sink therefore never sees half a document, nor a
    document without its sidecar.

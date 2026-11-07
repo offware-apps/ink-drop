@@ -4,7 +4,8 @@ go 1.27.1
 
 require (
 	codeberg.org/readeck/go-readability/v2 v2.1.3
-	golang.org/x/net v0.61.0
+	github.com/yuin/goldmark v1.8.7
+	golang.org/x/net v0.62.0
 	golang.org/x/text v0.43.0
 )
 

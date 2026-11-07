@@ -1,8 +1,10 @@
 // Command ink-send is a browser native-messaging host: it lists the library
-// for the ink-drop extension and puts a book in, or takes it out of, a folder
-// any sync tool can send on. It touches only the folders the user wrote in its
-// config file. `ink-send -install` registers it with Firefox for the current
-// user.
+// for the ink-drop extension and puts a book in, or takes it out of, the folder
+// of a transmitter, which is anything that sends on what lands there. It touches
+// only the folders the user wrote in its config file, and the browser names a
+// transmitter and never a path. It holds no code that starts a program or opens a
+// connection, so neither a setting nor a message can make it do either.
+// `ink-send -install` registers it with Firefox for the current user.
 package main
 
 import (
@@ -35,17 +37,33 @@ const (
 	maxText = 300
 )
 
+// A transmitter is a folder something sends on from: a sync tool, a mounted drive.
+type transmitter struct {
+	Name   string `json:"name"`
+	Folder string `json:"folder"`
+}
+
 // folders is the config file. Downloads is optional: where the browser saves
 // pages, moved into Library since an extension can save nowhere else.
 type folders struct {
-	Library   string `json:"library"`
-	Outbox    string `json:"outbox"`
-	Downloads string `json:"downloads,omitempty"`
+	Library      string        `json:"library"`
+	Downloads    string        `json:"downloads,omitempty"`
+	Transmitters []transmitter `json:"transmitters,omitempty"`
+	Routes       []route       `json:"routes,omitempty"`
 }
+
+// defaults is the config file -install writes where none exists.
+const defaults = `{
+  "library": "~/Books",
+  "downloads": "~/Downloads/ink-drop",
+  "transmitters": []
+}
+`
 
 type request struct {
 	Action string `json:"action"`
 	File   string `json:"file"`
+	To     string `json:"to"`
 }
 
 type book struct {
@@ -54,15 +72,22 @@ type book struct {
 	Source   string `json:"source,omitempty"`
 	Size     int64  `json:"size"`
 	Modified int64  `json:"modified"`
-	Sent     bool   `json:"sent"`
+	// Sent names each transmitter whose folder holds the book.
+	Sent []string `json:"sent,omitempty"`
+	// Folder is the library folder holding it, Where the folder of a route's book
+	// inside its route, and Route says the name is a route's id.
+	Folder string `json:"folder,omitempty"`
+	Where  string `json:"where,omitempty"`
+	Route  bool   `json:"route,omitempty"`
 }
 
 type reply struct {
-	OK    bool              `json:"ok"`
-	Error string            `json:"error,omitempty"`
-	Books []book            `json:"books,omitempty"`
-	More  int               `json:"more,omitempty"`
-	Moved map[string]string `json:"moved,omitempty"`
+	OK           bool              `json:"ok"`
+	Error        string            `json:"error,omitempty"`
+	Books        []book            `json:"books,omitempty"`
+	More         int               `json:"more,omitempty"`
+	Moved        map[string]string `json:"moved,omitempty"`
+	Transmitters []string          `json:"transmitters,omitempty"`
 }
 
 func main() {
@@ -80,7 +105,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, "ink-send:", err)
 			os.Exit(1)
 		}
-		fmt.Printf("ink-send: registered in %s\nink-send: the folders it uses are read from %s\n", path, configFile)
+		if err := writeDefaults(configFile); err != nil {
+			fmt.Fprintln(os.Stderr, "ink-send:", err)
+			os.Exit(1)
+		}
+		fmt.Printf("ink-send: registered in %s\nink-send: its folders and transmitters are in %s\n", path, configFile)
 		return
 	}
 	if err := write(os.Stdout, answer(os.Stdin, configFile)); err != nil {
@@ -118,7 +147,7 @@ func load(path string) (folders, error) {
 	var f folders
 	b, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return f, fmt.Errorf(`write {"library": "~/Books", "outbox": "~/Books/to-tablet"} into %s`, path)
+		return f, fmt.Errorf("%s is missing. Run: ink-send -install", path)
 	}
 	if err != nil {
 		return f, err
@@ -130,15 +159,46 @@ func load(path string) (folders, error) {
 	if err != nil {
 		return f, err
 	}
-	for _, p := range []*string{&f.Library, &f.Outbox, &f.Downloads} {
+	expand := func(p *string) {
 		if rest, ok := strings.CutPrefix(*p, "~/"); ok {
 			*p = filepath.Join(home, rest)
 		}
 	}
-	if !filepath.IsAbs(f.Library) || !filepath.IsAbs(f.Outbox) || (f.Downloads != "" && !filepath.IsAbs(f.Downloads)) {
-		return f, fmt.Errorf("%s: library and outbox need full paths", path)
+	expand(&f.Library)
+	expand(&f.Downloads)
+	for i := range f.Transmitters {
+		t := &f.Transmitters[i]
+		expand(&t.Folder)
+		if t.Name == "" || !filepath.IsAbs(t.Folder) {
+			return f, fmt.Errorf("%s: a transmitter needs a name and a full path", path)
+		}
+	}
+	if !filepath.IsAbs(f.Library) || (f.Downloads != "" && !filepath.IsAbs(f.Downloads)) {
+		return f, fmt.Errorf("%s: library and downloads need full paths", path)
+	}
+	if err := checkRoutes(f.Routes, home); err != nil {
+		return f, fmt.Errorf("%s: %w", path, err)
 	}
 	return f, nil
+}
+
+// writeDefaults leaves a config file there is alone, and creates the library of
+// the one it wrote.
+func writeDefaults(path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, []byte(defaults), 0o644); err != nil {
+		return err
+	}
+	f, err := load(path)
+	if err != nil {
+		return err
+	}
+	return os.MkdirAll(f.Library, 0o700)
 }
 
 func (f folders) handle(req request) (reply, error) {
@@ -149,22 +209,55 @@ func (f folders) handle(req request) (reply, error) {
 			return reply{}, err
 		}
 		books, more, err := f.list()
-		return reply{Books: books, More: more, Moved: moved}, err
+		names := make([]string, len(f.Transmitters))
+		for i, t := range f.Transmitters {
+			names[i] = t.Name
+		}
+		return reply{Books: books, More: more, Moved: moved, Transmitters: names}, err
 	case "send":
-		return reply{}, f.send(req.File)
+		if strings.HasPrefix(req.File, routePrefix) {
+			return reply{}, f.sendRoute(req.File, req.To)
+		}
+		return reply{}, f.send(req.File, req.To)
 	case "unsend":
-		return reply{}, f.unsend(req.File)
+		if strings.HasPrefix(req.File, routePrefix) {
+			return reply{}, f.unsendRoute(req.File, req.To)
+		}
+		return reply{}, f.unsend(req.File, req.To)
 	case "delete":
 		return reply{}, f.remove(req.File)
 	}
 	return reply{}, fmt.Errorf("unknown action %q", req.Action)
 }
 
-// isBook reports whether name is a plain file name a reader opens, so a name
-// from the browser cannot point outside the folder it is joined to.
+// transmitter returns the one called name, or the first where name is empty.
+func (f folders) transmitter(name string) (transmitter, error) {
+	for _, t := range f.Transmitters {
+		if t.Name == name || name == "" {
+			return t, nil
+		}
+	}
+	if name == "" {
+		return transmitter{}, errors.New("no transmitter in the config file")
+	}
+	return transmitter{}, fmt.Errorf("no transmitter called %q", name)
+}
+
+// isBook reports whether name is a file a reader opens, alone or in one folder
+// of the library, so a name from the browser cannot point outside the folder it
+// is joined to.
 func isBook(name string) bool {
 	ext := strings.ToLower(filepath.Ext(name))
-	return name == filepath.Base(name) && !strings.HasPrefix(name, ".") && (ext == ".epub" || ext == ".pdf")
+	parts := strings.Split(name, "/")
+	if !filepath.IsLocal(name) || len(parts) > 2 {
+		return false
+	}
+	for _, part := range parts {
+		if strings.HasPrefix(part, ".") {
+			return false
+		}
+	}
+	return ext == ".epub" || ext == ".pdf"
 }
 
 // inLibrary returns the path of the book called name, refusing a link that
@@ -174,6 +267,15 @@ func (f folders) inLibrary(name string) (string, error) {
 		return "", fmt.Errorf("%q is not a book name", name)
 	}
 	path := filepath.Join(f.Library, name)
+	if dir := filepath.Dir(name); dir != "." {
+		info, err := os.Lstat(filepath.Join(f.Library, dir))
+		if err != nil {
+			return "", err
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("%q is not a folder", dir)
+		}
+	}
 	info, err := os.Lstat(path)
 	if err != nil {
 		return "", err
@@ -184,41 +286,71 @@ func (f folders) inLibrary(name string) (string, error) {
 	return path, nil
 }
 
-// send hard-links the book into the outbox: no second copy on disk, and a sync
-// tool never sees it half written. Both folders must be on one drive.
-func (f folders) send(name string) error {
+// send hard-links the book into the transmitter's folder: no second copy on
+// disk, and a sync tool never sees it half written. A folder on another drive
+// takes a copy. A file of that name made from an older book is replaced.
+func (f folders) send(name, to string) error {
 	path, err := f.inLibrary(name)
 	if err != nil {
 		return err
 	}
-	err = os.Link(path, filepath.Join(f.Outbox, name))
-	if errors.Is(err, fs.ErrExist) {
+	t, err := f.transmitter(to)
+	if err != nil {
+		return err
+	}
+	dest := filepath.Join(t.Folder, name)
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+	book, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if there, err := os.Lstat(dest); err == nil {
+		if os.SameFile(book, there) {
+			return nil
+		}
+		if err := os.Remove(dest); err != nil {
+			return err
+		}
+	}
+	if os.Link(path, dest) == nil {
 		return nil
 	}
-	return err
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return folder.WriteAtomic(dest, data)
 }
 
-func (f folders) unsend(name string) error {
+func (f folders) unsend(name, to string) error {
 	if !isBook(name) {
 		return fmt.Errorf("%q is not a book name", name)
 	}
-	err := os.Remove(filepath.Join(f.Outbox, name))
+	t, err := f.transmitter(to)
+	if err != nil {
+		return err
+	}
+	err = os.Remove(filepath.Join(t.Folder, name))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 	return err
 }
 
-// remove deletes the book, its link in the outbox and its sidecar.
+// remove deletes the book, its link in every transmitter's folder and its sidecar.
 func (f folders) remove(name string) error {
 	path, err := f.inLibrary(name)
 	if err != nil {
 		return err
 	}
-	if err := f.unsend(name); err != nil {
-		return err
+	for _, t := range f.Transmitters {
+		if err := f.unsend(name, t.Name); err != nil {
+			return err
+		}
 	}
-	err = os.Remove(filepath.Join(f.Library, folder.SidecarDir, name+".json"))
+	err = os.Remove(filepath.Join(filepath.Dir(path), folder.SidecarDir, filepath.Base(path)+".json"))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
@@ -272,25 +404,76 @@ func free(dir, name string) string {
 	}
 }
 
+// names returns every book's name in dir, and in dir's folders, one level down.
+func names(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var found []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			found = append(found, e.Name())
+			continue
+		}
+		inside, err := os.ReadDir(filepath.Join(dir, e.Name()))
+		if err != nil || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		for _, sub := range inside {
+			found = append(found, e.Name()+"/"+sub.Name())
+		}
+	}
+	return found, nil
+}
+
 // list returns the library's newest books, and how many more it left out. A
 // title and a source come from the sidecar, where the book has one.
 func (f folders) list() ([]book, int, error) {
-	entries, err := os.ReadDir(f.Library)
+	found, err := names(f.Library)
+	if err != nil {
+		return nil, 0, err
+	}
+	routed, err := f.routeItems()
 	if err != nil {
 		return nil, 0, err
 	}
 	books := []book{}
-	for _, e := range entries {
-		info, err := e.Info()
-		if err != nil || !isBook(e.Name()) || !info.Mode().IsRegular() {
+	made := map[string]bool{}
+	for _, it := range routed {
+		name := it.tab + "/" + it.name
+		made[name] = true
+		b := book{Name: it.id, Title: clip(it.title), Modified: it.modified, Folder: it.tab, Where: clip(it.where), Route: true}
+		if info, err := os.Lstat(filepath.Join(f.Library, name)); err == nil {
+			b.Size = info.Size()
+		}
+		for _, t := range f.Transmitters {
+			if _, err := os.Lstat(filepath.Join(t.Folder, name)); err == nil {
+				b.Sent = append(b.Sent, t.Name)
+			}
+		}
+		books = append(books, b)
+	}
+	for _, name := range found {
+		if made[name] {
 			continue
 		}
-		b := book{Name: e.Name(), Size: info.Size(), Modified: info.ModTime().UnixMilli()}
-		if m, err := folder.Get(filepath.Join(f.Library, e.Name())); err == nil {
+		path := filepath.Join(f.Library, name)
+		info, err := os.Lstat(path)
+		if err != nil || !isBook(name) || !info.Mode().IsRegular() {
+			continue
+		}
+		b := book{Name: name, Size: info.Size(), Modified: info.ModTime().UnixMilli()}
+		if dir, _, ok := strings.Cut(name, "/"); ok {
+			b.Folder = dir
+		}
+		if m, err := folder.Get(path); err == nil {
 			b.Title, b.Source = clip(m.Title), clip(m.Source)
 		}
-		if _, err := os.Lstat(filepath.Join(f.Outbox, e.Name())); err == nil {
-			b.Sent = true
+		for _, t := range f.Transmitters {
+			if _, err := os.Lstat(filepath.Join(t.Folder, name)); err == nil {
+				b.Sent = append(b.Sent, t.Name)
+			}
 		}
 		books = append(books, b)
 	}
@@ -367,7 +550,7 @@ func register() (string, error) {
 	}
 	manifest, err := json.MarshalIndent(map[string]any{
 		"name":               hostName,
-		"description":        "Lists the ink-drop library and moves books to the folder that syncs on",
+		"description":        "Lists the ink-drop library and moves books to the folders that send them on",
 		"path":               exe,
 		"type":               "stdio",
 		"allowed_extensions": []string{extensionID},

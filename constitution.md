@@ -17,10 +17,10 @@ from it.
 | IV. One portable file | The library is plain documents and documented, versioned JSON sidecars, with no database. |
 | V. Aggregator | Every sidecar records the source URL and the fetch time. |
 | VI. Network is opt-in | A stage touches the network only for a URL the user names. |
-| VII. Open and replaceable | AGPL-3.0, with open dependencies only: [go-readability](https://codeberg.org/readeck/go-readability) under MIT and `golang.org/x/net` under BSD. |
+| VII. Open and replaceable | AGPL-3.0, with open dependencies only: [go-readability](https://codeberg.org/readeck/go-readability) and [goldmark](https://github.com/yuin/goldmark) under MIT and `golang.org/x/net` under BSD. |
 | VIII. Composable blocks | Each stage does one job, and stages meet only at [the folder contract](docs/folder.md): a document plus a JSON sidecar. Any tool keeping the contract replaces any stage. |
-| IX. Data is inert | A sidecar is parsed and validated, never evaluated, and every EPUB drops scripts, forms and frames. |
-| X. Fast, keyboard-first | Command-line only, driven from the keyboard. |
+| IX. Data is inert | A sidecar or a setting is parsed and validated, never evaluated, every EPUB drops scripts, forms and frames, and the extension's helper holds no code that starts a program or opens a connection. |
+| X. Fast, keyboard-first | The stages are command-line, driven from the keyboard. The browser extension is one optional frontend over the same folder. |
 | XI. E-reader compatible | The output is EPUB and PDF, the formats e-readers open. |
 
 ## Fetching is the only network use
