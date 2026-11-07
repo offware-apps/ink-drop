@@ -5,6 +5,7 @@ package web
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -34,14 +35,14 @@ func Get(client *http.Client, rawURL string, limit int64) ([]byte, string, *url.
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, "", nil, fmt.Errorf("HTTP %s", resp.Status)
+		return nil, "", nil, StatusError{resp.StatusCode, resp.Status}
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return nil, "", nil, err
 	}
 	if int64(len(body)) > limit {
-		return nil, "", nil, fmt.Errorf("larger than %d bytes", limit)
+		return nil, "", nil, fmt.Errorf("%w: %d bytes", ErrTooLarge, limit)
 	}
 	ctype, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 	if ctype == "" {
@@ -49,6 +50,37 @@ func Get(client *http.Client, rawURL string, limit int64) ([]byte, string, *url.
 	}
 	return body, ctype, resp.Request.URL, nil
 }
+
+// ErrTooLarge is a body over the limit Get was given.
+var ErrTooLarge = errors.New("larger than the limit")
+
+// StatusError is a reply other than 200 OK.
+type StatusError struct {
+	Code   int
+	Status string
+}
+
+func (e StatusError) Error() string { return "HTTP " + e.Status }
+
+// Passing reports whether err may not happen again: no reply at all, a
+// timeout or a reset for one, or a server busy or rate-limiting, 429 or 5xx.
+// A page gone, 404 for one, is not passing.
+func Passing(err error) bool {
+	var s StatusError
+	if errors.As(err, &s) {
+		return s.Code == http.StatusTooManyRequests || s.Code >= 500
+	}
+	var u *url.Error
+	return errors.As(err, &u)
+}
+
+// maxImages bounds the bytes read for one page's images in all, an image
+// refused for its type or its size included, since a page of many large
+// photographs takes many times its size in memory on its way to a book. A body
+// the server cuts short is not counted, Get keeping none of it. An image past
+// the budget keeps its remote address, which ink-epub drops. A digest is one
+// page: its articles share the budget.
+const maxImages = 32 << 20
 
 // Inline returns the page as UTF-8 with every image it can download turned
 // into a data URI. An image that fails keeps its remote address.
@@ -62,6 +94,7 @@ func Inline(client *http.Client, body []byte, ctype string, base *url.URL) ([]by
 		return nil, err
 	}
 	seen := map[string]string{}
+	budget := int64(maxImages)
 	var walk func(n *html.Node)
 	walk = func(n *html.Node) {
 		for c := n.FirstChild; c != nil; {
@@ -70,7 +103,7 @@ func Inline(client *http.Client, body []byte, ctype string, base *url.URL) ([]by
 				n.RemoveChild(c)
 			} else {
 				if c.Type == html.ElementNode && c.Data == "img" {
-					inlineImage(client, c, base, seen)
+					inlineImage(client, c, base, seen, &budget)
 				}
 				walk(c)
 			}
@@ -85,7 +118,7 @@ func Inline(client *http.Client, body []byte, ctype string, base *url.URL) ([]by
 
 // inlineImage points img at a data URI and drops the lazy-loading attributes,
 // which would otherwise send a later stage back to the network.
-func inlineImage(client *http.Client, img *html.Node, base *url.URL, seen map[string]string) {
+func inlineImage(client *http.Client, img *html.Node, base *url.URL, seen map[string]string, budget *int64) {
 	src := attr(img, "src")
 	for _, k := range []string{"data-src", "data-original", "data-lazy-src"} {
 		if v := attr(img, k); v != "" && (src == "" || strings.HasPrefix(src, "data:")) {
@@ -110,7 +143,19 @@ func inlineImage(client *http.Client, img *html.Node, base *url.URL, seen map[st
 	}
 	data, ok := seen[u.String()]
 	if !ok {
-		body, ctype, _, err := Get(client, u.String(), maxImage)
+		var body []byte
+		var ctype string
+		err := errors.New("the page's images reached their budget")
+		if *budget > 0 {
+			limit := min(maxImage, *budget)
+			body, ctype, _, err = Get(client, u.String(), limit)
+			// Every byte read counts, an image refused for its type or its
+			// size included; one too big for what is left ends the budget.
+			*budget -= int64(len(body))
+			if errors.Is(err, ErrTooLarge) {
+				*budget -= limit
+			}
+		}
 		if err == nil && !strings.HasPrefix(ctype, "image/") {
 			err = fmt.Errorf("content type %q", ctype)
 		}

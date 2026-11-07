@@ -24,6 +24,10 @@ type Book struct {
 	Title    string
 	Source   string
 	Modified time.Time
+	// MaxWidth shrinks every image wider than it, 0 for none, and Grey turns
+	// them grey: a reader's screen shows no more, and the book is lighter.
+	MaxWidth int
+	Grey     bool
 }
 
 type image struct {
@@ -65,6 +69,7 @@ func Build(b Book, doc io.Reader) ([]byte, error) {
 		if !ok {
 			return false
 		}
+		mt, data = fit(mt, data, b.MaxWidth, b.Grey)
 		name, seen := byData[string(data)]
 		if !seen {
 			name = fmt.Sprintf("images/img-%03d.%s", len(images)+1, strings.TrimPrefix(mt, "image/"))
@@ -86,7 +91,7 @@ func Build(b Book, doc io.Reader) ([]byte, error) {
 			return nil, err
 		}
 	}
-	return pack(b, lang, text.String(), images)
+	return pack(b, lang, text.String(), chapters(body), images)
 }
 
 // dropped elements lose their whole subtree: each runs code, takes input,
@@ -179,6 +184,44 @@ func links(body *html.Node) {
 	})
 }
 
+// chapters returns the nav entries under the book's own: one per h2 carrying
+// an id, so a reader's table of contents lists each article of a digest. In
+// a digest, whose entries' ids open on "entry-", an article's own headings
+// stay out, so every line of the contents is an article.
+func chapters(body *html.Node) string {
+	digest := false
+	walk(body, func(n *html.Node) {
+		if n.DataAtom == atom.H2 && strings.HasPrefix(attr(n, "id"), "entry-") {
+			digest = true
+		}
+	})
+	var b strings.Builder
+	walk(body, func(n *html.Node) {
+		if n.DataAtom != atom.H2 || attr(n, "id") == "" || digest && !strings.HasPrefix(attr(n, "id"), "entry-") {
+			return
+		}
+		if name := strings.Join(strings.Fields(textOf(n)), " "); name != "" {
+			fmt.Fprintf(&b, "<li><a href=\"text.xhtml#%s\">%s</a></li>", esc(attr(n, "id")), esc(name))
+		}
+	})
+	if b.Len() == 0 {
+		return ""
+	}
+	return "<ol>" + b.String() + "</ol>"
+}
+
+// textOf returns the text under n.
+func textOf(n *html.Node) string {
+	if n.Type == html.TextNode {
+		return n.Data
+	}
+	var t strings.Builder
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		t.WriteString(textOf(c))
+	}
+	return t.String()
+}
+
 func walk(n *html.Node, fn func(*html.Node)) {
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		if c.Type == html.ElementNode {
@@ -247,7 +290,7 @@ func decodeImage(src string) (string, []byte, bool) {
 	return mt, data, true
 }
 
-func pack(b Book, lang, text string, images []image) ([]byte, error) {
+func pack(b Book, lang, text, toc string, images []image) ([]byte, error) {
 	var out bytes.Buffer
 	z := zip.NewWriter(&out)
 	// The mimetype entry comes first and uncompressed, with no data descriptor,
@@ -268,7 +311,7 @@ func pack(b Book, lang, text string, images []image) ([]byte, error) {
 	}{
 		{"META-INF/container.xml", []byte(container)},
 		{"OEBPS/content.opf", []byte(opf(b, title, src, l, images))},
-		{"OEBPS/nav.xhtml", []byte(fmt.Sprintf(nav, l, l, title, title))},
+		{"OEBPS/nav.xhtml", []byte(fmt.Sprintf(nav, l, l, title, title, toc))},
 		{"OEBPS/text.xhtml", []byte(fmt.Sprintf(page, l, l, title, title, sourceLine(b.Source), text))},
 		{"OEBPS/style.css", []byte(style)},
 	}
@@ -383,7 +426,7 @@ const nav = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="%s" lang="%s">
 <head><meta charset="utf-8"/><title>%s</title></head>
-<body><nav epub:type="toc"><ol><li><a href="text.xhtml">%s</a></li></ol></nav></body>
+<body><nav epub:type="toc"><ol><li><a href="text.xhtml">%s</a>%s</li></ol></nav></body>
 </html>
 `
 

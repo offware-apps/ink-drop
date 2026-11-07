@@ -51,6 +51,34 @@ func Put(dir, name string, data []byte, m Meta) (string, error) {
 	return path, WriteAtomic(path, data)
 }
 
+// Free returns the name for an item made from source in dir: stem plus ext,
+// numbered while another source's item holds it, so an item never replaces
+// another page's. An item of the same source keeps its name and is replaced.
+func Free(dir, stem, ext, source string) string {
+	name := stem + ext
+	for n := 2; held(dir, name, source); n++ {
+		name = fmt.Sprintf("%s-%d%s", stem, n, ext)
+	}
+	return name
+}
+
+// held reports whether dir holds an item by that name made from a page other
+// than source, or a file by that name with no sidecar.
+func held(dir, name, source string) bool {
+	m, err := Get(filepath.Join(dir, name))
+	if err != nil {
+		_, statErr := os.Stat(filepath.Join(dir, name))
+		return statErr == nil
+	}
+	return m.Source != source
+}
+
+// Remove deletes the item at path and its sidecar.
+func Remove(path string) error {
+	os.Remove(filepath.Join(filepath.Dir(path), SidecarDir, filepath.Base(path)+".json"))
+	return os.Remove(path)
+}
+
 // Get returns the sidecar of the document at path.
 func Get(path string) (Meta, error) {
 	var m Meta

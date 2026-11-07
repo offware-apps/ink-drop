@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The ink-drop mark: the extension's drop, in black for an e-ink screen.
+     108 units square, the drop inside the 66-unit middle every launcher shows. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <path
+      android:fillColor="#000000"
+      android:pathData="M54,25 C54,25 34,49 34,63 A20,20 0 0,0 74,63 C74,49 54,25 54,25 Z" />
+  <path
+      android:strokeColor="#FFFFFF"
+      android:strokeWidth="3"
+      android:strokeLineCap="round"
+      android:fillColor="#00000000"
+      android:pathData="M44,63 A10,10 0 0,0 52,73" />
+</vector>

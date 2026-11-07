@@ -1,14 +1,13 @@
 # ink-drop
 
-Web pages, PDFs, feeds and your own Markdown, made into books in one folder that
-any e-reader reads offline.
+Web pages, feeds and your own Markdown, made into books that any e-reader reads
+offline.
 
-ink-drop is a set of small command-line stages. Each one does a single job and
-hands its result to the next through a plain folder, whose shape is
-[the folder contract](docs/folder.md). The finished folder is the library. A
-[browser extension](extension/) lists it, and a tick puts a book in the folder
-your sync tool sends to your reader, Syncthing for one. Reading needs no
-network.
+ink-drop runs in two places. On an e-ink tablet, an Android app fetches your
+feeds and the pages you share to it, and makes each article a book. On a laptop,
+the same work runs as small command-line stages, and a browser extension sends
+the books you pick to the reader through your sync tool, Syncthing for one. Both
+fill one folder, and reading needs no network.
 
 > The French Wikipedia article on
 > [electronic paper](https://fr.wikipedia.org/wiki/Papier_%C3%A9lectronique),
@@ -20,32 +19,132 @@ network.
 
 ![The Wikipedia page with its menus, tabs and language picker, beside the EPUB holding only the title, the source link, the photo and the article text](media/before-after.png)
 
-Each stage reads one line at a time on stdin, a URL for `ink-fetch` and
-`ink-feed` and an item path for the others, and prints the paths it wrote.
-`-to` sets the folder it writes to: `ink-fetch`, `ink-feed` and `ink-readable`
-default to `ink-drop/<stage>` under the user cache folder, and `ink-epub` needs
-it.
-
 ## TL;DR
 
 ```sh
-# 1. Build every stage
+# 1. Build and sign the tablet app, then install it
+android/build.sh && adb install -r android/build/ink-drop.apk
+# 2. Build every laptop stage
 go build -o bin/ ./cmd/...
-# 2. Turn one article into an EPUB in the library
+# 3. Turn one article into an EPUB in the library
 echo https://example.org/post | bin/ink-fetch | bin/ink-readable | bin/ink-epub -to ~/Books
-# 3. Turn the new posts of one site's feed into an EPUB digest
+# 4. Turn the new posts of one site's feed into an EPUB
 echo https://go.dev/blog/ | bin/ink-feed | bin/ink-epub -to ~/Books
-# 4. Install the extension's helper, then load extension/ in Firefox
+# 5. Install the extension's helper, then load extension/ in Firefox
 go install github.com/offware-apps/ink-drop/cmd/ink-send@latest
 ink-send -install
 ```
 
-`ink-feed` takes a feed's address or a site's: given a page, it follows the
-first feed the page names in a link tag. Nothing fetches feeds on its own:
-[docs/schedule.md](docs/schedule.md) sets up an hourly run that the user
-enables.
+## On the tablet
 
-## Commands
+The [Android app](android/) runs the stages on the tablet itself, so news
+arrives without the laptop. The Books tab first asks for the folder the books
+go to, `Books/ink-drop` for one; the tablet's library reads them from there. It
+refuses the laptop's `Laptop` folder, and keeps access to the one folder picked.
+
+Every list turns by the page, as the tablet's reader does, rather than
+scrolling: Previous and Next under the list, a swipe left or right anywhere, or
+the page and volume keys. The screens are black and white with no animation, so
+the e-ink screen leaves no ghosts.
+
+### Books
+
+- A Refresh button fetches every feed now, and says what came of it: how many
+  books were saved, and how many addresses failed.
+- A chip per folder, newest first, after All, `Pages` and `Laptop`: the feeds
+  shown two rows deep, the rest a tap away on the Feeds tab. Under a feed's
+  chip, a chip per section with its count, `Politique 12`, the fullest first.
+- A Today chip keeps the list to the last 24 hours.
+- Each book shows a mark for its section, 🏛 for politics or 🔬 for science,
+  and its feed's initials; the feed and section above the title; then EPUB or
+  PDF, its size and its age. A NEW tag marks each book that arrived since you
+  last left the app and has not been opened from it.
+- A tap opens the book in the tablet's reader. A long press deletes it after
+  asking, except in `Laptop`, whose books the laptop's sync owns.
+
+To save a page, share it to ink-drop from the browser: it becomes a book in
+`Pages`, its article alone, its pictures inside it. A share made while a
+refresh runs waits for it and says so. The same page shared again replaces its
+book with the page as it is now.
+
+### Feeds
+
+- Add a feed by its address, or a site's, whose feed ink-drop finds in its
+  page; or search 841 feeds of the [awesome-rss-feeds](android/assets/directory/SOURCE)
+  list by topic, country or name, searched on the tablet with no network.
+- Import and Export the list as one OPML file, the format every feed reader
+  reads, so a list moves from another reader and back.
+- Refresh on its own: off, or every 1, 3, 6 or 12 hours, 3 by default, and
+  only while the tablet is online. The line under it says when the last
+  refresh ran and what it saved.
+- Pictures in new books: Grey, the lightest a greyscale screen shows, or
+  Colour for a colour tablet. Either way no picture is wider than the screen,
+  and a picture its copy would make heavier stays as it came.
+- Each feed's row shows its site and what it keeps. Remove takes it off the
+  list, and offers to delete its books too, unless another feed shares its
+  folder.
+
+Tap a feed to open its settings, each saved as it is picked:
+
+| Setting | Choices | Default |
+| --- | --- | --- |
+| Keep each book | 1 day, 3 days, 1 week, 1 month, for ever | 1 week, for ever when imported |
+| Keep at most | any number, 20, 50 or 100 books | any number |
+| Make | one book per article, or one book per refresh | one per article |
+| Leave out articles holding | words, comma-separated | none |
+| Keep only articles holding | words, comma-separated | every article |
+
+After each refresh, the books past what the feed keeps are deleted from its
+folder. A word matches a whole word of the title or the summary the feed gives,
+whatever its case and accents, and an article left out never comes back. The
+settings travel in the exported OPML file, in attributes other readers skip.
+Open its books shows that feed's folder on the Books tab.
+
+### Logs
+
+The Logs tab shows what ink-drop did, newest first: each refresh and share
+with its outcome as a heading, every stage's exit and the errors it printed,
+each book copied with its size, and how many books a feed's settings deleted.
+Clear empties it.
+
+### What a refresh does
+
+For each feed, starting after the one the last refresh reached, so a refresh
+cut short reaches every feed in turn:
+
+1. `ink-feed` fetches the feed and keeps the entries it has not seen, at most
+   50 a run, leaving out those the feed's words leave out. An entry the feed
+   gives as a summary alone is fetched from its page, so the book holds the
+   whole article; a busy server's article is tried again in the next runs.
+2. `ink-epub` makes each a book, its pictures fitted to the screen.
+3. The app copies each book into the feed's folder, in a section's folder
+   where the article's address names one: `Le Monde.fr/Politique`. An
+   article already there is not copied twice.
+4. The books past what the feed keeps are deleted.
+
+A page leaves the app's own storage only once its book is in your folder, so a
+refresh stopped part way, the network gone or the folder no longer there,
+loses nothing: the next one picks it up.
+
+### What the app may do
+
+`android/build.sh` builds and signs the app with the Android SDK's own tools and
+no Gradle, from a key kept in `~/.config/ink-drop/`. The app asks for three
+permissions: network access, the network's state to find its DNS servers, and a
+start at boot to keep its refresh scheduled. Of the tablet's storage it reads
+and writes the folder you picked, and a feed list you pick to import or export.
+Any app can share an address with it, so every download it starts is refused an
+address on the tablet itself or on the network it sits on. Where the tablet sets
+a Private DNS host, every lookup goes over TLS to that host.
+
+## On the laptop
+
+Each stage reads one line at a time on stdin, a URL for `ink-fetch` and
+`ink-feed` and an item path for the others, and prints the paths it wrote. Each
+hands its result to the next through a plain folder, whose shape is
+[the folder contract](docs/folder.md). `-to` sets the folder a stage writes to:
+`ink-fetch`, `ink-feed` and `ink-readable` default to `ink-drop/<stage>` under
+the user cache folder, and `ink-epub` needs it.
 
 | Command | Job | State |
 | --- | --- | --- |
@@ -56,14 +155,23 @@ enables.
 | [`ink-send`](cmd/ink-send/main.go) | Lists the library for the browser extension and copies a ticked book to the sync folder | Built |
 | [`ink-mirror`](cmd/ink-mirror/main.go) | Crawls one site into a single HTML item | Not built |
 
-Every command but `ink-send` is a stage of the pipe. `ink-send` reads no
-stdin line: Firefox starts it for each request the extension makes.
+`ink-send` reads no stdin line: Firefox starts it for each request the
+extension makes.
+
+`ink-feed` takes a feed's address or a site's: given a page, it follows the
+first feed the page names in a link tag. An entry the feed gives as a summary
+alone is fetched from its page, so the book holds the whole article. One digest
+per feed is the default, `-each` writes one item per article instead, and
+`-mute` and `-only` take the words a feed's settings take on the tablet. Nothing
+fetches feeds on its own on the laptop: [docs/schedule.md](docs/schedule.md)
+sets up an hourly run that you enable.
 
 A PDF needs no conversion: `ink-readable` passes it through and `ink-epub`
-copies it into the library. `ink-fetch` inlines a page's images, so every
-later stage runs offline.
+copies it into the library. `ink-fetch` inlines a page's images, so every later
+stage runs offline. `ink-epub -max-width` and `-grey` fit the pictures as the
+tablet does.
 
-## The browser extension
+### The browser extension
 
 The [extension](extension/) saves the page you are reading as an EPUB through the
 browser's downloads, with nothing else installed. To load it, open
@@ -99,10 +207,12 @@ the library page needs `library` set to match.
 
 ### The sync folder
 
-`sync` is the one folder your sync tool sends to the reader, a Syncthing folder
-for one. Ticking a book, or *Send* in the popup, copies it there, and unticking
-removes it. ink-drop never sends anything itself: the sync tool does, when you
-let it run.
+`sync` is the one folder your sync tool sends to the reader. Ticking a book, or
+*Send* in the popup, copies it there, and unticking removes it. ink-drop never
+sends anything itself: the sync tool does, when you let it run. With the tablet
+app, point `sync` at the `Laptop` folder inside the app's folder, and share only
+`Laptop` with the tablet, so the sync tool and the app never write the same
+files.
 
 ### Routes
 

@@ -51,13 +51,13 @@ func fetch(client *http.Client, dir, rawURL string) (string, error) {
 	meta := folder.Meta{Source: final.String(), Fetched: time.Now().UTC().Truncate(time.Second), Stage: "ink-fetch"}
 	switch {
 	case ctype == "application/pdf" || bytes.HasPrefix(body, []byte("%PDF-")):
-		return folder.Put(dir, stem+".pdf", body, meta)
+		return folder.Put(dir, folder.Free(dir, stem, ".pdf", meta.Source), body, meta)
 	case ctype == "text/html" || ctype == "application/xhtml+xml":
 		page, err := web.Inline(client, body, ctype, final)
 		if err != nil {
 			return "", err
 		}
-		return folder.Put(dir, stem+".html", page, meta)
+		return folder.Put(dir, folder.Free(dir, stem, ".html", meta.Source), page, meta)
 	}
 	return "", fmt.Errorf("unsupported content type %q", ctype)
 }

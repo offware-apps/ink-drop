@@ -50,3 +50,25 @@ func TestGetRejectsForeignSidecar(t *testing.T) {
 		t.Fatal("Get accepted a sidecar naming another file")
 	}
 }
+
+func TestFreeNumbersAnotherSourcesName(t *testing.T) {
+	dir := t.TempDir()
+	if got := Free(dir, "a", ".html", "https://x/1"); got != "a.html" {
+		t.Fatalf("empty folder: %s", got)
+	}
+	if _, err := Put(dir, "a.html", []byte("1"), Meta{Source: "https://x/1"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := Free(dir, "a", ".html", "https://x/1"); got != "a.html" {
+		t.Errorf("the same source keeps its name: %s", got)
+	}
+	if got := Free(dir, "a", ".html", "https://x/2"); got != "a-2.html" {
+		t.Errorf("another source is numbered: %s", got)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "b.pdf"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := Free(dir, "b", ".pdf", "https://x/3"); got != "b-2.pdf" {
+		t.Errorf("a file with no sidecar is never replaced: %s", got)
+	}
+}

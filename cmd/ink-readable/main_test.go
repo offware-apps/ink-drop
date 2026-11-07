@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -49,5 +50,26 @@ func TestReadablePassesPDF(t *testing.T) {
 	out, err := readable(t.TempDir(), p)
 	if err != nil || out != p {
 		t.Fatalf("got %s, %v", out, err)
+	}
+}
+
+// Two pages of one file name from different sources keep two items.
+func TestReadableKeepsAnotherSourcesItem(t *testing.T) {
+	in, out := t.TempDir(), t.TempDir()
+	var got []string
+	for _, src := range []string{"https://a.example/post", "https://b.example/post"} {
+		dir := filepath.Join(in, src[8:9])
+		p, err := folder.Put(dir, "post.html", []byte("<html><head><title>Post</title></head><body><article><p>"+strings.Repeat("Text from "+src+". ", 40)+"</p></article></body></html>"), folder.Meta{Source: src, Stage: "ink-fetch"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := readable(out, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, r)
+	}
+	if got[0] == got[1] {
+		t.Errorf("one item for two sources: %v", got)
 	}
 }

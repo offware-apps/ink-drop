@@ -15,7 +15,9 @@ import (
 )
 
 // Run calls fn on each non-blank line of in and prints the paths it returns,
-// one per line. It returns the exit code: 1 if any line failed.
+// one per line, those fn wrote before failing included, since a later stage
+// would otherwise never see them. It returns the exit code: 1 if any line
+// failed.
 func Run(name string, in io.Reader, out io.Writer, fn func(line string) ([]string, error)) int {
 	code := 0
 	sc := bufio.NewScanner(in)
@@ -26,13 +28,14 @@ func Run(name string, in io.Reader, out io.Writer, fn func(line string) ([]strin
 			continue
 		}
 		paths, err := fn(line)
+		for _, p := range paths {
+			if p != "" {
+				fmt.Fprintln(out, p)
+			}
+		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", name, line, err)
 			code = 1
-			continue
-		}
-		for _, p := range paths {
-			fmt.Fprintln(out, p)
 		}
 	}
 	if err := sc.Err(); err != nil {

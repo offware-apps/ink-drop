@@ -114,3 +114,44 @@ func TestSourceLink(t *testing.T) {
 		}
 	}
 }
+
+func TestNavListsChapters(t *testing.T) {
+	b, err := Build(Book{Title: "News"}, strings.NewReader(`<h2 id="entry-1">First <em>one</em></h2><p>x</p><h2>No id</h2><h2 id="entry-2">Second</h2>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	z, _ := zip.NewReader(bytes.NewReader(b), int64(len(b)))
+	for _, f := range z.File {
+		if f.Name != "OEBPS/nav.xhtml" {
+			continue
+		}
+		r, _ := f.Open()
+		nav, _ := io.ReadAll(r)
+		want := `<a href="text.xhtml">News</a><ol><li><a href="text.xhtml#entry-1">First one</a></li><li><a href="text.xhtml#entry-2">Second</a></li></ol>`
+		if !strings.Contains(string(nav), want) {
+			t.Errorf("nav %s, want %s", nav, want)
+		}
+		return
+	}
+	t.Fatal("no nav.xhtml")
+}
+
+// In a digest, an article's own headings stay out of the contents.
+func TestNavListsOnlyEntriesOfADigest(t *testing.T) {
+	b, err := Build(Book{Title: "News"}, strings.NewReader(`<h2 id="entry-1">First</h2><h2 id="background">Background</h2><h2 id="entry-2">Second</h2>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	z, _ := zip.NewReader(bytes.NewReader(b), int64(len(b)))
+	for _, f := range z.File {
+		if f.Name == "OEBPS/nav.xhtml" {
+			r, _ := f.Open()
+			nav, _ := io.ReadAll(r)
+			if strings.Contains(string(nav), "Background") || !strings.Contains(string(nav), "#entry-2") {
+				t.Errorf("nav %s", nav)
+			}
+			return
+		}
+	}
+	t.Fatal("no nav.xhtml")
+}

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"codeberg.org/readeck/go-readability/v2"
 
@@ -69,5 +70,8 @@ func readable(dir, path string) (string, error) {
 	}
 	b.WriteString("</body></html>\n")
 	m.Title, m.Stage = a.Title(), "ink-readable"
-	return folder.Put(dir, filepath.Base(path), b.Bytes(), m)
+	// The same page made again replaces its own item; another page's item of
+	// the same name is never replaced.
+	stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	return folder.Put(dir, folder.Free(dir, stem, ".html", m.Source), b.Bytes(), m)
 }

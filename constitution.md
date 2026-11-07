@@ -21,7 +21,7 @@ from it.
 | VIII. Composable blocks | Each stage does one job, and stages meet only at [the folder contract](docs/folder.md): a document plus a JSON sidecar. Any tool keeping the contract replaces any stage. |
 | IX. Data is inert | A sidecar or a setting is parsed and validated, never evaluated, every EPUB drops scripts, forms and frames, and the extension's helper holds no code that starts a program or opens a connection. |
 | X. Fast, keyboard-first | The stages are command-line, driven from the keyboard. The browser extension is one optional frontend over the same folder. |
-| XI. E-reader compatible | The output is EPUB and PDF, the formats e-readers open. |
+| XI. E-reader compatible | The output is EPUB and PDF, the formats e-readers open. The tablet app departs from the browser rule: it is an Android app, since a browser page cannot fetch another site. It keeps the rest, black and white with no animation, and every list turns by the page, never by scrolling. |
 
 ## Fetching is the only network use
 

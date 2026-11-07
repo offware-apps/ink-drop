@@ -31,3 +31,14 @@ func TestRun(t *testing.T) {
 		t.Fatalf("code %d, out %q", code, out.String())
 	}
 }
+
+// Paths fn wrote before failing still reach the next stage.
+func TestRunPrintsPathsBeforeAFailure(t *testing.T) {
+	var out strings.Builder
+	code := Run("t", strings.NewReader("a\n"), &out, func(line string) ([]string, error) {
+		return []string{"/w/one.html"}, errors.New("disk full")
+	})
+	if code != 1 || out.String() != "/w/one.html\n" {
+		t.Errorf("code %d, out %q", code, out.String())
+	}
+}

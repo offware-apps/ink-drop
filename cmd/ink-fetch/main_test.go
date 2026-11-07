@@ -74,3 +74,24 @@ func TestFetchRejectsScheme(t *testing.T) {
 		t.Fatal("fetch accepted a file URL")
 	}
 }
+
+// Two pages of one path with different queries are two items.
+func TestQueryKeepsItsOwnPage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte("<html><body><p>video " + r.URL.Query().Get("v") + "</p></body></html>"))
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	a, err := fetch(srv.Client(), dir, srv.URL+"/watch?v=A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := fetch(srv.Client(), dir, srv.URL+"/watch?v=B")
+	if err != nil || a == b {
+		t.Fatalf("one item for two pages: %s, %s, %v", a, b, err)
+	}
+	if got, _ := os.ReadFile(a); !strings.Contains(string(got), "video A") {
+		t.Errorf("the first page was replaced: %s", got)
+	}
+}
