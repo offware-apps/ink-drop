@@ -9,6 +9,53 @@ the same work runs as small command-line stages, and a browser extension sends
 the books you pick to the reader through your sync tool, Syncthing for one. Both
 fill one folder, and reading needs no network.
 
+## What ink-drop is
+
+Four parts, each usable alone, that fill one folder of books.
+
+### The tablet app
+
+- Fetches your feeds on its own every few hours while the tablet is online, and
+  makes each article a book: the whole article, fetched from its page when the
+  feed gives only a summary.
+- Saves a page you share to it from the browser as a book, its article alone.
+- Files each book in a folder per feed and per section, and shows the date the
+  article was published and its author, as the feed gives them.
+- Finds feeds by address or in a list of 841 searched on the tablet, and reads
+  and writes the list as OPML.
+- Keeps, per feed, books for a number of days or up to a number of books, and
+  leaves out articles holding words you name.
+- Shows the last 24 hours, marks what is new, moves a book you star to
+  Favourites where no feed's settings reach it, and asks before every delete.
+- Fits pictures to the screen, in grey for a greyscale screen.
+- Turns every list by the page, in black and white, for e-ink.
+
+### The stages
+
+- `ink-fetch` downloads a page or a PDF with its pictures inside it.
+- `ink-readable` keeps a page's article and drops the rest.
+- `ink-feed` turns a feed's new entries into one digest or one item each,
+  keeping each entry's date, author and categories.
+- `ink-epub` packs each item into an EPUB, its pictures fitted.
+
+Each reads paths or addresses on stdin and prints what it wrote, so they chain
+in a shell pipe, and the tablet app runs the same programs.
+
+### The browser extension
+
+- Saves the page you are reading as an EPUB, with nothing else installed.
+- With its helper, lists the whole library, with a tab per folder, a search and
+  a sort, and sends a ticked book to your reader.
+
+### The helper and the sync folder
+
+- `ink-send` lists the library for the extension, copies a ticked book into the
+  folder your sync tool sends to the reader, and makes books of your own
+  Markdown notes on demand. It holds no code that runs a program or opens a
+  connection.
+- With the tablet app, the sync tool fills only its `Laptop` folder, which the
+  app reads and never writes.
+
 > The French Wikipedia article on
 > [electronic paper](https://fr.wikipedia.org/wiki/Papier_%C3%A9lectronique),
 > on the left as the web serves it and on the right as the EPUB the three
@@ -22,7 +69,7 @@ fill one folder, and reading needs no network.
 ## TL;DR
 
 ```sh
-# 1. Build and sign the tablet app, then install it
+# 1. Build and sign the tablet app, then install it, or take ink-drop.apk from the latest release
 android/build.sh && adb install -r android/build/ink-drop.apk
 # 2. Build every laptop stage
 go build -o bin/ ./cmd/...
@@ -38,7 +85,10 @@ ink-send -install
 ## On the tablet
 
 The [Android app](android/) runs the stages on the tablet itself, so news
-arrives without the laptop. The Books tab first asks for the folder the books
+arrives without the laptop. Download `ink-drop.apk` from the
+[latest release](https://github.com/offware-apps/ink-drop/releases/latest) for a
+tablet on Android 13 or later with a 64-bit ARM chip, or build it with
+`android/build.sh`. The Books tab first asks for the folder the books
 go to, `Books/ink-drop` for one; the tablet's library reads them from there. It
 refuses the laptop's `Laptop` folder, and keeps access to the one folder picked.
 
@@ -54,12 +104,15 @@ the e-ink screen leaves no ghosts.
 - A chip per folder, newest first, after All, `Pages` and `Laptop`: the feeds
   shown two rows deep, the rest a tap away on the Feeds tab. Under a feed's
   chip, a chip per section with its count, `Politique 12`, the fullest first.
-- A Today chip keeps the list to the last 24 hours, and a Compact chip shows
-  each book on two short lines, about twice as many a page.
+- A Today chip keeps the list to the last 24 hours. Compact rows, at the top
+  right, show each book on one line, its box and its title.
 - Each book shows a mark for its section, 🏛 for politics or 🔬 for science,
-  and its feed's initials; the feed and section above the title; then EPUB or
-  PDF, its size and its age. A NEW tag marks each book that arrived since you
+  and its feed's initials in a box; the feed, the section, when the article was
+  published and its author above its title. The list runs newest first by that
+  date, and a book whose feed gives none takes the time it arrived. A NEW tag marks each book that arrived since you
   last left the app and has not been opened from it.
+- The ☆ moves a book to `Favourites`, a folder no feed's settings reach, where
+  it stays until you delete it.
 - A tap opens the book in the tablet's reader. A long press deletes it after
   asking, except in `Laptop`, whose books the laptop's sync owns. A long press
   on a folder's chip deletes the folder's books after asking, `Laptop` and

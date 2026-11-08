@@ -36,9 +36,15 @@ file per feed.
   "title": "A post",
   "source": "https://example.org/post",
   "fetched": "2026-10-10T09:00:00Z",
-  "stage": "ink-epub"
+  "stage": "ink-epub",
+  "published": "2026-10-09T18:30:00Z",
+  "author": "A. Writer",
+  "tags": ["Politics"]
 }
 ```
+
+`published`, `author` and `tags` are what a feed says of its entry, written by
+`ink-feed` where the feed gives them and carried by every later stage.
 
 A reader of a sidecar rejects any `schema` it does not know, and any `file`
 other than the document's own name. A sidecar is data: it is parsed, never

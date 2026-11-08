@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/offware-apps/ink-drop/folder"
 )
@@ -95,7 +96,7 @@ func TestFeedAtom(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := read(t, paths)
-	for _, want := range []string{"Café", `href="https://example.org/cafe"`, "<em>tasse</em>", "2026-10-01", "1 &lt; 2 &amp; &lt;b&gt;not bold&lt;/b&gt;", "<i>slanted</i>"} {
+	for _, want := range []string{"Café", `href="https://example.org/cafe"`, "<em>tasse</em>", "1 October 2026", "1 &lt; 2 &amp; &lt;b&gt;not bold&lt;/b&gt;", "<i>slanted</i>"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("digest lacks %q: %s", want, page)
 		}
@@ -638,6 +639,32 @@ func TestWordsMatchWholeWordsOfText(t *testing.T) {
 	}
 	if w.wants(entry{Title: "New AI rules"}) || w.wants(entry{Title: "x", Description: "<p>Le <b>sport</b> du jour</p>"}) {
 		t.Error("an entry holding a mute word was kept")
+	}
+}
+
+// An entry's item keeps what its feed says of it: the date, the author and the
+// categories, in RSS and in Atom.
+func TestEntryKeepsWhatItsFeedSays(t *testing.T) {
+	items := `<item><title>A</title><guid>1</guid><pubDate>Fri, 06 Nov 2026 08:30:00 +0100</pubDate>` +
+		`<dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Ana Writer</dc:creator><category>Politique</category><category>Europe</category>` + long("a") + `</item>` +
+		`<item><title>B</title><guid>2</guid><author>desk@example.org (The Desk)</author>` + long("b") + `</item>`
+	srv := feedOf("News", &items, nil)
+	defer srv.Close()
+	paths, err := digest(srv.Client(), t.TempDir(), srv.URL+"/rss.xml", true)
+	if err != nil || len(paths) != 2 {
+		t.Fatalf("%v, %v", paths, err)
+	}
+	a, _ := folder.Get(paths[0])
+	b, _ := folder.Get(paths[1])
+	if !a.Published.Equal(time.Date(2026, 11, 6, 7, 30, 0, 0, time.UTC)) || a.Author != "Ana Writer" || strings.Join(a.Tags, ",") != "Politique,Europe" {
+		t.Errorf("first entry's sidecar: %+v", a)
+	}
+	if b.Author != "The Desk" || !b.Published.IsZero() {
+		t.Errorf("second entry's sidecar: %+v", b)
+	}
+	atom := entry{Published: "2026-11-05T10:00:00Z", Author: person{Name: "Bo"}}
+	if !atom.published().Equal(time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)) || atom.author() != "Bo" {
+		t.Errorf("Atom entry: %v, %q", atom.published(), atom.author())
 	}
 }
 

@@ -27,6 +27,11 @@ type Meta struct {
 	Source  string    `json:"source"`
 	Fetched time.Time `json:"fetched"`
 	Stage   string    `json:"stage"`
+	// What a feed says of its entry, where it says it: when it was published,
+	// by whom, and the feed's own categories for it.
+	Published time.Time `json:"published,omitzero"`
+	Author    string    `json:"author,omitempty"`
+	Tags      []string  `json:"tags,omitempty"`
 }
 
 // Put writes data as name inside dir with its sidecar, and returns the

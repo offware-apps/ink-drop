@@ -61,13 +61,19 @@ type feed struct {
 
 // entry is an RSS item or an Atom entry.
 type entry struct {
-	Title       string `xml:"title"`
-	Links       []link `xml:"link"`
-	GUID        string `xml:"guid"`
-	ID          string `xml:"id"`
-	PubDate     string `xml:"pubDate"`
-	Published   string `xml:"published"`
-	Updated     string `xml:"updated"`
+	Title      string `xml:"title"`
+	Links      []link `xml:"link"`
+	GUID       string `xml:"guid"`
+	ID         string `xml:"id"`
+	PubDate    string `xml:"pubDate"`
+	Published  string `xml:"published"`
+	Updated    string `xml:"updated"`
+	Author     person `xml:"author"`
+	Creator    string `xml:"http://purl.org/dc/elements/1.1/ creator"`
+	Categories []struct {
+		Term string `xml:"term,attr"`
+		Text string `xml:",chardata"`
+	} `xml:"category"`
 	Encoded     string `xml:"encoded"`
 	Description string `xml:"description"`
 	Content     text   `xml:"http://www.w3.org/2005/Atom content"`
@@ -246,7 +252,7 @@ func digest(client *http.Client, dir, rawURL string, each bool, keep ...words) (
 				if err != nil {
 					return paths, err
 				}
-				p, err := folder.Put(dir, folder.Free(dir, stage.Slug(title), ".html", source), page, folder.Meta{Source: source, Title: title, Fetched: fetched, Stage: "ink-feed"})
+				p, err := folder.Put(dir, folder.Free(dir, stage.Slug(title), ".html", source), page, folder.Meta{Source: source, Title: title, Fetched: fetched, Stage: "ink-feed", Published: e.published(), Author: e.author(), Tags: e.tags()})
 				if err != nil {
 					return paths, err
 				}
@@ -457,8 +463,17 @@ func render(title string, entries []entry, pages []string, feedURL *url.URL) []b
 		} else {
 			fmt.Fprintf(&b, `<h2>%s</h2>`, html.EscapeString(first(e.Title, "Untitled")))
 		}
-		if d := first(e.PubDate, e.Published, e.Updated); d != "" {
-			fmt.Fprintf(&b, "<p>%s</p>", html.EscapeString(d))
+		var said []string
+		if t := e.published(); !t.IsZero() {
+			said = append(said, t.Format("2 January 2006, 15:04 MST"))
+		} else if d := first(e.PubDate, e.Published, e.Updated); d != "" {
+			said = append(said, d)
+		}
+		if a := e.author(); a != "" {
+			said = append(said, a)
+		}
+		if len(said) > 0 {
+			fmt.Fprintf(&b, "<p>%s</p>", html.EscapeString(strings.Join(said, " · ")))
 		}
 		body := pages[i]
 		if body == "" {
@@ -581,6 +596,48 @@ func absolute(n *html.Node, base *url.URL) {
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		absolute(c, base)
 	}
+}
+
+// person is an author: Atom's name in an element, RSS's an address with the
+// name in parentheses.
+type person struct {
+	Name string `xml:"name"`
+	Text string `xml:",chardata"`
+}
+
+// published returns when the entry was published, else last updated, or the
+// zero time where the feed gives no date in a form it reads.
+func (e entry) published() time.Time {
+	for _, s := range []string{e.PubDate, e.Published, e.Updated} {
+		s = strings.TrimSpace(s)
+		for _, layout := range []string{time.RFC1123Z, time.RFC1123, time.RFC3339, "Mon, 2 Jan 2006 15:04:05 -0700", "Mon, 2 Jan 2006 15:04:05 MST", "2 Jan 2006 15:04:05 -0700"} {
+			if t, err := time.Parse(layout, s); err == nil {
+				return t.UTC()
+			}
+		}
+	}
+	return time.Time{}
+}
+
+// author returns the entry's author by name: Atom's, Dublin Core's creator,
+// or the name in parentheses after an RSS address.
+func (e entry) author() string {
+	a := strings.TrimSpace(first(e.Author.Name, e.Creator, e.Author.Text))
+	if i, j := strings.Index(a, "("), strings.LastIndex(a, ")"); i >= 0 && j > i {
+		a = strings.TrimSpace(a[i+1 : j])
+	}
+	return a
+}
+
+// tags returns the feed's categories for the entry, each once.
+func (e entry) tags() []string {
+	var out []string
+	for _, c := range e.Categories {
+		if t := strings.TrimSpace(first(c.Term, c.Text)); t != "" && !slices.Contains(out, t) {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // id returns what names the entry from one run to the next: its guid or

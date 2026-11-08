@@ -408,7 +408,7 @@ final class Refresher {
     if (s.length() > 60) s = s.substring(0, 60).trim();
     // Laptop is the folder Syncthing fills from the laptop and Pages holds shared
     // pages: neither is ever a feed's folder, so a feed's cleanup never reaches them.
-    if (s.equalsIgnoreCase("Laptop") || s.equalsIgnoreCase("Pages")) s += " feed";
+    if (s.equalsIgnoreCase("Laptop") || s.equalsIgnoreCase("Pages") || s.equalsIgnoreCase(FAVOURITES)) s += " feed";
     return s.isEmpty() || s.startsWith(".") ? "Feed" : s;
   }
 
@@ -446,7 +446,7 @@ final class Refresher {
   // empty, and reports whether every book is gone; a file that is no book stays.
   // Laptop and Pages are refused, whoever asks. It waits for a run under way.
   boolean deleteShelf(String shelf) {
-    if (shelf.isEmpty() || shelf.equalsIgnoreCase("Laptop") || shelf.equalsIgnoreCase("Pages")) return false;
+    if (shelf.isEmpty() || shelf.equalsIgnoreCase("Laptop") || shelf.equalsIgnoreCase("Pages") || shelf.equalsIgnoreCase(FAVOURITES)) return false;
     synchronized (RUN) {
       try {
         Uri dir = find(null, shelf);
@@ -500,6 +500,44 @@ final class Refresher {
     }
   }
 
+  // Favourites holds the books the user starred, which no feed's settings reach.
+  static final String FAVOURITES = "Favourites";
+
+  // favourite moves the book at doc into the Favourites folder and reports
+  // whether it moved; its title, source, date and author go with it.
+  boolean favourite(String doc) {
+    if (underLaptop(doc) || doc.lastIndexOf('/') < 0) return false;
+    synchronized (RUN) {
+      active = true;
+      try {
+        ContentResolver cr = ctx.getContentResolver();
+        Uri tree = folder();
+        String parent = doc.substring(0, doc.lastIndexOf('/'));
+        Uri to = DocumentsContract.moveDocument(cr, DocumentsContract.buildDocumentUriUsingTree(tree, doc),
+            DocumentsContract.buildDocumentUriUsingTree(tree, parent), dir(null, FAVOURITES));
+        if (to == null) return false;
+        String now = DocumentsContract.getDocumentId(to);
+        SharedPreferences.Editor e = prefs.edit();
+        for (String k : KEPT) {
+          String v = prefs.getString(k + doc, null);
+          if (v != null) e.remove(k + doc).putString(k + now, v);
+        }
+        e.apply();
+        log("moved " + doc + " to " + FAVOURITES);
+        return true;
+      } catch (Exception e) {
+        log("favourite " + doc + ": " + e);
+        return false;
+      } finally {
+        active = false;
+        runs++;
+      }
+    }
+  }
+
+  // What is kept per book, keyed by its document id.
+  private static final String[] KEPT = {"title:", "source:", "published:", "author:"};
+
   // Path words that name no section: a site's own page kinds and languages.
   private static final java.util.Set<String> NOT_SECTIONS = java.util.Set.of(
       "article", "articles", "rss", "feed", "feeds", "titres", "blog", "news", "post", "posts",
@@ -528,6 +566,21 @@ final class Refresher {
   }
 
 
+  // published returns when the book at doc was published, as its feed says,
+  // else the time given, when it arrived.
+  long published(String doc, long arrived) {
+    try {
+      return Long.parseLong(prefs.getString("published:" + doc, Long.toString(arrived)));
+    } catch (NumberFormatException e) {
+      return arrived;
+    }
+  }
+
+  // author returns the book's author as its feed names them, or "".
+  String author(String doc) {
+    return prefs.getString("author:" + doc, "");
+  }
+
   // title returns the title the book at doc was made with, else its file name
   // in words; a book copied before titles were keyed by document is found by
   // its file name.
@@ -546,7 +599,8 @@ final class Refresher {
     int n = 0;
     for (String k : prefs.getAll().keySet()) {
       // A key naming a document holds a colon; one naming a bare file is older.
-      String doc = k.startsWith("title:") ? k.substring(6) : k.startsWith("source:") ? k.substring(7) : null;
+      String doc = null;
+      for (String p : KEPT) if (k.startsWith(p)) doc = k.substring(p.length());
       if (doc != null && doc.contains(":") && !docs.contains(doc)) {
         e.remove(k);
         n++;
@@ -702,12 +756,14 @@ final class Refresher {
   // from the stage's sidecar, since the file name lost its accents.
   // It reports false where the same article is already there.
   private boolean copy(File book, String shelf, boolean sections) throws IOException {
-    String title = "", source = "";
+    String title = "", source = "", published = "", author = "";
     File side = new File(new File(book.getParentFile(), ".ink"), book.getName() + ".json");
     try (InputStream in = new FileInputStream(side)) {
       org.json.JSONObject m = new org.json.JSONObject(new String(in.readAllBytes(), StandardCharsets.UTF_8));
       title = m.optString("title");
       source = m.optString("source");
+      published = m.optString("published");
+      author = m.optString("author");
     } catch (IOException | org.json.JSONException e) {
       log("no sidecar for " + book.getName() + ": " + e);
     }
@@ -763,6 +819,12 @@ final class Refresher {
     // Keyed by the copy's own document: two books may share a file name.
     SharedPreferences.Editor kept = prefs.edit().putString("source:" + DocumentsContract.getDocumentId(doc), source);
     if (!title.isEmpty()) kept.putString("title:" + DocumentsContract.getDocumentId(doc), title);
+    if (!author.isEmpty()) kept.putString("author:" + DocumentsContract.getDocumentId(doc), author);
+    try {
+      if (!published.isEmpty()) kept.putString("published:" + DocumentsContract.getDocumentId(doc), Long.toString(java.time.Instant.parse(published).toEpochMilli()));
+    } catch (java.time.format.DateTimeParseException e) {
+      log("no date for " + name + ": " + published);
+    }
     kept.apply();
     log("copied " + shelf + (section.isEmpty() ? "" : "/" + section) + "/" + name + " (" + book.length() + " bytes)");
     return true;
