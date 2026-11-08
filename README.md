@@ -3,68 +3,23 @@
 Web pages, feeds and your own Markdown, made into books that any e-reader reads
 offline.
 
-ink-drop runs in two places. On an e-ink tablet, an Android app fetches your
-feeds and the pages you share to it, and makes each article a book. On a laptop,
-the same work runs as small command-line stages, and a browser extension sends
-the books you pick to the reader through your sync tool, Syncthing for one. Both
-fill one folder, and reading needs no network.
+Everything lands in one folder of EPUB books, and reading needs no network. The
+tablet app is in the [latest release](https://github.com/offware-apps/ink-drop/releases/latest).
 
-## What ink-drop is
-
-Four parts, each usable alone, that fill one folder of books.
-
-### The tablet app
-
-- Fetches your feeds on its own every few hours while the tablet is online, and
-  makes each article a book: the whole article, fetched from its page when the
-  feed gives only a summary.
-- Saves a page you share to it from the browser as a book, its article alone.
-- Files each book in a folder per feed and per section, and shows the date the
-  article was published and its author, as the feed gives them.
-- Finds feeds by address or in a list of 841 searched on the tablet, and reads
-  and writes the list as OPML.
-- Keeps, per feed, books for a number of days or up to a number of books, and
-  leaves out articles holding words you name.
-- Shows the last 24 hours, marks what is new, moves a book you star to
-  Favourites where no feed's settings reach it, and asks before every delete.
-- Fits pictures to the screen, in grey for a greyscale screen.
-- Turns every list by the page, in black and white, for e-ink.
-
-### The stages
-
-- `ink-fetch` downloads a page or a PDF with its pictures inside it.
-- `ink-readable` keeps a page's article and drops the rest.
-- `ink-feed` turns a feed's new entries into one digest or one item each,
-  keeping each entry's date, author and categories.
-- `ink-epub` packs each item into an EPUB, its pictures fitted.
-
-Each reads paths or addresses on stdin and prints what it wrote, so they chain
-in a shell pipe, and the tablet app runs the same programs.
-
-### The browser extension
-
-- Saves the page you are reading as an EPUB, with nothing else installed.
-- With its helper, lists the whole library, with a tab per folder, a search and
-  a sort, and sends a ticked book to your reader.
-
-### The helper and the sync folder
-
-- `ink-send` lists the library for the extension, copies a ticked book into the
-  folder your sync tool sends to the reader, and makes books of your own
-  Markdown notes on demand. It holds no code that runs a program or opens a
-  connection.
-- With the tablet app, the sync tool fills only its `Laptop` folder, which the
-  app reads and never writes.
-
-> The French Wikipedia article on
-> [electronic paper](https://fr.wikipedia.org/wiki/Papier_%C3%A9lectronique),
-> on the left as the web serves it and on the right as the EPUB the three
-> stages made from it. Both are headless Chromium at 600×800, the EPUB page in
-> greyscale with a serif stylesheet standing in for an e-ink reader's. Text
-> [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), photo
-> [in the public domain](https://commons.wikimedia.org/wiki/File:E-ink-display-detail.jpg).
+| Part | What it does |
+| --- | --- |
+| [Tablet app](#on-the-tablet) | Fetches your feeds every few hours and saves pages you share to it. Files each article as a book per feed and section, with its date and author. Keeps what you star or set aside, and asks before every delete. |
+| [Stages](#on-the-laptop) | `ink-fetch`, `ink-readable`, `ink-feed` and `ink-epub`: small commands that chain in a shell pipe, the same ones the app runs. |
+| [Browser extension](#the-browser-extension) | Saves the page you are reading as an EPUB, and with its helper lists your library and sends a book to the reader. |
+| [Sync folder](#the-sync-folder) | Your sync tool, Syncthing for one, carries books from the laptop into the tablet's `Laptop` folder. |
 
 ![The Wikipedia page with its menus, tabs and language picker, beside the EPUB holding only the title, the source link, the photo and the article text](media/before-after.png)
+
+*Left, the French Wikipedia article on
+[electronic paper](https://fr.wikipedia.org/wiki/Papier_%C3%A9lectronique) as
+the web serves it; right, the EPUB the stages made from it. Text
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), photo
+[public domain](https://commons.wikimedia.org/wiki/File:E-ink-display-detail.jpg).*
 
 ## TL;DR
 
