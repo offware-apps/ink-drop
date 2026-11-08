@@ -576,9 +576,9 @@ public class MainActivity extends Activity {
   private void settingsScreen() {
     if (!status.isEmpty()) body.addView(text(status, 17, INK), gap(20));
     autoRefresh();
-    // Grey is the lightest on a greyscale screen; either way no picture is
-    // wider than the screen.
-    choices("Pictures in new books", new String[] {"Grey", "Colour"}, new int[] {0, 1}, prefs.getBoolean("colour", false) ? 1 : 0,
+    // Grey suits an e-ink screen: the marks drawn darker in grey, and new
+    // books' pictures grey, the lightest; Colour leaves both as they are.
+    choices("Screen", new String[] {"Grey", "Colour"}, new int[] {0, 1}, prefs.getBoolean("colour", false) ? 1 : 0,
         v -> prefs.edit().putBoolean("colour", v == 1).apply());
     LinearLayout row = new LinearLayout(this);
     row.setGravity(Gravity.CENTER_VERTICAL);
@@ -644,7 +644,7 @@ public class MainActivity extends Activity {
     // ◔ and ★ are text, drawn smaller than an emoji at one size: a third more.
     int size = compact ? 26 : 32;
     TextView mark = text(symbol, symbol.equals("◔") || symbol.equals("★") ? size * 4 / 3 : size, INK);
-    mark.setLayerType(View.LAYER_TYPE_HARDWARE, inked());
+    if (!prefs.getBoolean("colour", false)) mark.setLayerType(View.LAYER_TYPE_HARDWARE, inked());
     mark.setGravity(Gravity.CENTER);
     cover.addView(mark);
     String initials = initials(b[4]);

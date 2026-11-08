@@ -160,9 +160,10 @@ Open its books shows that feed's folder on the Books tab.
 - Refresh on its own: off, or every 1, 3, 6 or 12 hours, 3 by default, and
   only while the tablet is online. The line under it says when the last
   refresh ran and what it saved.
-- Pictures in new books: Grey, the lightest a greyscale screen shows, or
-  Colour for a colour tablet. Either way no picture is wider than the screen,
-  and a picture its copy would make heavier stays as it came.
+- Screen: Grey for an e-ink screen, the marks drawn darker in grey and new
+  books' pictures in grey, the lightest; or Colour for a colour tablet, both as
+  they are. Either way no picture is wider than the screen, and a picture its
+  copy would make heavier stays as it came.
 - The books folder, and Change to pick another.
 
 ### Logs
