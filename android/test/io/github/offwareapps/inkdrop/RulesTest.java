@@ -88,6 +88,8 @@ public final class RulesTest {
     want("a feed named Favourites files apart", Refresher.shelf("Favourites"), "Favourites feed");
     want("mark of a favourite", MainActivity.mark("Favourites", ""), "★");
     want("Favourites have no initials", MainActivity.initials("Favourites"), "");
+    want("a feed named Read later files apart", Refresher.shelf("Read later"), "Read later feed");
+    want("mark of a book set aside", MainActivity.mark("Read later", ""), "🔖");
     want("a hash is 16 hex digits", String.valueOf(Refresher.hash("https://x/a").matches("[0-9a-f]{16}")), "true");
     if (failed > 0) System.exit(1);
     System.out.println("rules: all hold");

@@ -421,6 +421,7 @@ public class MainActivity extends Activity {
       }
     }
     if (names.remove("Pages")) names.add(0, "Pages");
+    if (names.remove(Refresher.READ_LATER)) names.add(0, Refresher.READ_LATER);
     if (names.remove(Refresher.FAVOURITES)) names.add(0, Refresher.FAVOURITES);
     names.add(0, null);
     LinearLayout line = new LinearLayout(this);
@@ -463,7 +464,7 @@ public class MainActivity extends Activity {
       });
       // A long press deletes the folder's books, and so its chip; Laptop is
       // the laptop's sync's and Pages holds the pages shared, each its own.
-      if (n != null && !n.equalsIgnoreCase("Laptop") && !n.equalsIgnoreCase("Pages") && !n.equalsIgnoreCase(Refresher.FAVOURITES)) {
+      if (n != null && !n.equalsIgnoreCase("Laptop") && !n.equalsIgnoreCase("Pages") && !Refresher.kept(n)) {
         c.setOnLongClickListener(v -> {
           deleteFolder(n, all);
           return true;
@@ -649,13 +650,12 @@ public class MainActivity extends Activity {
     }
     boolean pdf = b[1].endsWith(".pdf");
     row.addView(words, new LinearLayout.LayoutParams(0, -2, 1));
-    // The star moves the book to Favourites, out of every feed's settings.
+    // 🔖 sets the book aside in Read later and ☆ moves it to Favourites, both
+    // out of every feed's settings; a favourite stays one.
     if (!Refresher.underLaptop(b[0])) {
-      boolean fav = Refresher.FAVOURITES.equalsIgnoreCase(b[4]);
-      TextView star = text(fav ? "★" : "☆", 28, INK);
-      star.setGravity(Gravity.CENTER);
-      if (!fav) star.setOnClickListener(v -> favourite(b[0], title));
-      row.addView(star, new LinearLayout.LayoutParams(dp(56), -1));
+      boolean fav = Refresher.FAVOURITES.equalsIgnoreCase(b[4]), later = Refresher.READ_LATER.equalsIgnoreCase(b[4]);
+      if (!fav && !later) row.addView(icon("🔖", v -> keep(b[0], title, Refresher.READ_LATER)), new LinearLayout.LayoutParams(dp(56), -1));
+      row.addView(icon(fav ? "★" : "☆", fav ? null : v -> keep(b[0], title, Refresher.FAVOURITES)), new LinearLayout.LayoutParams(dp(56), -1));
     }
 
     Uri doc = DocumentsContract.buildDocumentUriUsingTree(folder(), b[0]);
@@ -713,6 +713,7 @@ public class MainActivity extends Activity {
     String key = java.text.Normalizer.normalize(section.toLowerCase(Locale.ROOT), java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
     if (MARKS.containsKey(key)) return MARKS.get(key);
     if (shelf.equalsIgnoreCase(Refresher.FAVOURITES)) return "★";
+    if (shelf.equalsIgnoreCase(Refresher.READ_LATER)) return "🔖";
     if (shelf.equalsIgnoreCase("Pages")) return "📄";
     if (shelf.equalsIgnoreCase("Laptop")) return "💻";
     return "📰";
@@ -721,7 +722,7 @@ public class MainActivity extends Activity {
   // initials returns a feed's two letters, one per word or the first two of a
   // single word: "Le Monde.fr" is LM, "Franceinfo" FR; Pages and Laptop have none.
   static String initials(String shelf) {
-    if (shelf.isEmpty() || shelf.equalsIgnoreCase("Pages") || shelf.equalsIgnoreCase("Laptop") || shelf.equalsIgnoreCase(Refresher.FAVOURITES)) return "";
+    if (shelf.isEmpty() || shelf.equalsIgnoreCase("Pages") || shelf.equalsIgnoreCase("Laptop") || Refresher.kept(shelf)) return "";
     String[] words = shelf.replaceAll("[^\\p{L}\\p{N} ]", " ").trim().split("\\s+");
     String out = words.length > 1 ? words[0].substring(0, 1) + words[1].substring(0, 1) : words[0].substring(0, Math.min(2, words[0].length()));
     return out.toUpperCase(Locale.ROOT);
@@ -1262,16 +1263,25 @@ public class MainActivity extends Activity {
     }).start();
   }
 
-  // favourite moves a book to Favourites, where it stays until deleted by hand.
-  private void favourite(String doc, String title) {
-    setStatus("Moving “" + title + "” to Favourites…");
+  // keep moves a book to Favourites or Read later, where it stays until
+  // deleted by hand.
+  private void keep(String doc, String title, String into) {
+    setStatus("Moving “" + title + "” to " + into + "…");
     new Thread(() -> {
-      boolean moved = refresher.favourite(doc);
+      boolean moved = refresher.keep(doc, into);
       runOnUiThread(() -> {
-        status = moved ? "“" + title + "” is in Favourites." : "That book could not be moved: see Logs.";
+        status = moved ? "“" + title + "” is in " + into + "." : "That book could not be moved: see Logs.";
         load();
       });
     }).start();
+  }
+
+  // icon is a symbol a tap acts on, or that only shows where click is null.
+  private TextView icon(String symbol, View.OnClickListener click) {
+    TextView t = text(symbol, 26, INK);
+    t.setGravity(Gravity.CENTER);
+    if (click != null) t.setOnClickListener(click);
+    return t;
   }
 
   // deleteBook deletes one book after asking, since nothing brings it back.

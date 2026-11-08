@@ -112,8 +112,9 @@ the e-ink screen leaves no ghosts.
   published and its author above its title. The list runs newest first by that
   date, and a book whose feed gives none takes the time it arrived. A NEW tag marks each book that arrived since you
   last left the app and has not been opened from it.
-- The ☆ moves a book to `Favourites`, a folder no feed's settings reach, where
-  it stays until you delete it.
+- 🔖 sets a book aside in `Read later` and ☆ moves it to `Favourites`: two
+  folders of their own, which no feed's settings reach, where a book stays
+  until you delete it.
 - A tap opens the book in the tablet's reader. A long press deletes it after
   asking, except in `Laptop`, whose books the laptop's sync owns. A long press
   on a folder's chip deletes the folder's books after asking, `Laptop` and

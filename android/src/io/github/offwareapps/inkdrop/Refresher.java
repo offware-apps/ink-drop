@@ -408,7 +408,7 @@ final class Refresher {
     if (s.length() > 60) s = s.substring(0, 60).trim();
     // Laptop is the folder Syncthing fills from the laptop and Pages holds shared
     // pages: neither is ever a feed's folder, so a feed's cleanup never reaches them.
-    if (s.equalsIgnoreCase("Laptop") || s.equalsIgnoreCase("Pages") || s.equalsIgnoreCase(FAVOURITES)) s += " feed";
+    if (s.equalsIgnoreCase("Laptop") || s.equalsIgnoreCase("Pages") || kept(s)) s += " feed";
     return s.isEmpty() || s.startsWith(".") ? "Feed" : s;
   }
 
@@ -446,7 +446,7 @@ final class Refresher {
   // empty, and reports whether every book is gone; a file that is no book stays.
   // Laptop and Pages are refused, whoever asks. It waits for a run under way.
   boolean deleteShelf(String shelf) {
-    if (shelf.isEmpty() || shelf.equalsIgnoreCase("Laptop") || shelf.equalsIgnoreCase("Pages") || shelf.equalsIgnoreCase(FAVOURITES)) return false;
+    if (shelf.isEmpty() || shelf.equalsIgnoreCase("Laptop") || shelf.equalsIgnoreCase("Pages") || kept(shelf)) return false;
     synchronized (RUN) {
       try {
         Uri dir = find(null, shelf);
@@ -500,12 +500,19 @@ final class Refresher {
     }
   }
 
-  // Favourites holds the books the user starred, which no feed's settings reach.
-  static final String FAVOURITES = "Favourites";
+  // Favourites holds the books the user starred and Read later those set aside;
+  // no feed's settings reach either.
+  static final String FAVOURITES = "Favourites", READ_LATER = "Read later";
 
-  // favourite moves the book at doc into the Favourites folder and reports
-  // whether it moved; its title, source, date and author go with it.
-  boolean favourite(String doc) {
+  // kept reports whether a folder name is one of the user's own, which no
+  // feed files into and no feed's settings reach.
+  static boolean kept(String shelf) {
+    return shelf.equalsIgnoreCase(FAVOURITES) || shelf.equalsIgnoreCase(READ_LATER);
+  }
+
+  // keep moves the book at doc into the folder into, Favourites or Read later,
+  // and reports whether it moved; its title, source, date and author go with it.
+  boolean keep(String doc, String into) {
     if (underLaptop(doc) || doc.lastIndexOf('/') < 0) return false;
     synchronized (RUN) {
       active = true;
@@ -514,7 +521,7 @@ final class Refresher {
         Uri tree = folder();
         String parent = doc.substring(0, doc.lastIndexOf('/'));
         Uri to = DocumentsContract.moveDocument(cr, DocumentsContract.buildDocumentUriUsingTree(tree, doc),
-            DocumentsContract.buildDocumentUriUsingTree(tree, parent), dir(null, FAVOURITES));
+            DocumentsContract.buildDocumentUriUsingTree(tree, parent), dir(null, into));
         if (to == null) return false;
         String now = DocumentsContract.getDocumentId(to);
         SharedPreferences.Editor e = prefs.edit();
@@ -523,10 +530,10 @@ final class Refresher {
           if (v != null) e.remove(k + doc).putString(k + now, v);
         }
         e.apply();
-        log("moved " + doc + " to " + FAVOURITES);
+        log("moved " + doc + " to " + into);
         return true;
       } catch (Exception e) {
-        log("favourite " + doc + ": " + e);
+        log("move " + doc + " to " + into + ": " + e);
         return false;
       } finally {
         active = false;
