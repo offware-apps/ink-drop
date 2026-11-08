@@ -84,12 +84,12 @@ public final class RulesTest {
     f.keepMost = 50;
     f.together = true;
     f.mute = "foot";
-    want("a feed's settings in words", MainActivity.keeps(f), "keeps for ever, at most 50, one book per refresh, words picked");
+    want("a feed's settings in words", MainActivity.keeps(f), "keeps for ever, at most 50, articles together, words picked");
     want("a feed named Favourites files apart", Refresher.shelf("Favourites"), "Favourites feed");
     want("mark of a favourite", MainActivity.mark("Favourites", ""), "★");
     want("Favourites have no initials", MainActivity.initials("Favourites"), "");
     want("a feed named Read later files apart", Refresher.shelf("Read later"), "Read later feed");
-    want("mark of a book set aside", MainActivity.mark("Read later", ""), "🔖");
+    want("mark of a book set aside", MainActivity.mark("Read later", ""), "◔");
     want("a hash is 16 hex digits", String.valueOf(Refresher.hash("https://x/a").matches("[0-9a-f]{16}")), "true");
     if (failed > 0) System.exit(1);
     System.out.println("rules: all hold");

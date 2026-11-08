@@ -511,39 +511,72 @@ final class Refresher {
   }
 
   // keep moves the book at doc into the folder into, Favourites or Read later,
-  // and reports whether it moved; its title, source, date and author go with it.
+  // and reports whether it moved.
   boolean keep(String doc, String into) {
     if (underLaptop(doc) || doc.lastIndexOf('/') < 0) return false;
     synchronized (RUN) {
-      active = true;
       try {
-        ContentResolver cr = ctx.getContentResolver();
-        Uri tree = folder();
-        String parent = doc.substring(0, doc.lastIndexOf('/'));
-        Uri to = DocumentsContract.moveDocument(cr, DocumentsContract.buildDocumentUriUsingTree(tree, doc),
-            DocumentsContract.buildDocumentUriUsingTree(tree, parent), dir(null, into));
-        if (to == null) return false;
-        String now = DocumentsContract.getDocumentId(to);
-        SharedPreferences.Editor e = prefs.edit();
-        for (String k : KEPT) {
-          String v = prefs.getString(k + doc, null);
-          if (v != null) e.remove(k + doc).putString(k + now, v);
-        }
-        e.apply();
-        log("moved " + doc + " to " + into);
-        return true;
-      } catch (Exception e) {
+        return move(doc, dir(null, into), into) != null;
+      } catch (IOException e) {
         log("move " + doc + " to " + into + ": " + e);
         return false;
-      } finally {
-        active = false;
-        runs++;
       }
     }
   }
 
+  // release moves a book out of Favourites or Read later back to the folder it
+  // came from, where its feed's settings reach it again, and reports whether it
+  // moved: not where that folder is gone.
+  boolean release(String doc) {
+    String from = prefs.getString("from:" + doc, null);
+    if (from == null) return false;
+    synchronized (RUN) {
+      Uri back = DocumentsContract.buildDocumentUriUsingTree(folder(), from);
+      try (Cursor c = ctx.getContentResolver().query(back, new String[] {Document.COLUMN_DOCUMENT_ID}, null, null, null)) {
+        if (c == null || !c.moveToFirst()) return false;
+      } catch (RuntimeException e) {
+        return false;
+      }
+      String now = move(doc, back, from);
+      if (now == null) return false;
+      prefs.edit().remove("from:" + now).apply();
+      return true;
+    }
+  }
+
+  // move moves the book at doc into the folder at to, what is kept for it
+  // going along, and returns its new document id, or null where it did not
+  // move. The folder a book first left is kept as from:, for release.
+  private String move(String doc, Uri to, String name) {
+    active = true;
+    try {
+      ContentResolver cr = ctx.getContentResolver();
+      Uri tree = folder();
+      String parent = doc.substring(0, doc.lastIndexOf('/'));
+      Uri moved = DocumentsContract.moveDocument(cr, DocumentsContract.buildDocumentUriUsingTree(tree, doc),
+          DocumentsContract.buildDocumentUriUsingTree(tree, parent), to);
+      if (moved == null) return null;
+      String now = DocumentsContract.getDocumentId(moved);
+      SharedPreferences.Editor e = prefs.edit();
+      for (String k : KEPT) {
+        String v = prefs.getString(k + doc, null);
+        if (v != null) e.remove(k + doc).putString(k + now, v);
+      }
+      if (!prefs.contains("from:" + doc)) e.putString("from:" + now, parent);
+      e.apply();
+      log("moved " + doc + " to " + name);
+      return now;
+    } catch (Exception e) {
+      log("move " + doc + " to " + name + ": " + e);
+      return null;
+    } finally {
+      active = false;
+      runs++;
+    }
+  }
+
   // What is kept per book, keyed by its document id.
-  private static final String[] KEPT = {"title:", "source:", "published:", "author:"};
+  private static final String[] KEPT = {"title:", "source:", "published:", "author:", "from:"};
 
   // Path words that name no section: a site's own page kinds and languages.
   private static final java.util.Set<String> NOT_SECTIONS = java.util.Set.of(

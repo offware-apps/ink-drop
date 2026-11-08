@@ -104,17 +104,17 @@ the e-ink screen leaves no ghosts.
 - A chip per folder, newest first, after All, `Pages` and `Laptop`: the feeds
   shown two rows deep, the rest a tap away on the Feeds tab. Under a feed's
   chip, a chip per section with its count, `Politique 12`, the fullest first.
-- A Today chip keeps the list to the last 24 hours. The ≡ at the top right
-  packs each book onto one line at the same type size, its mark, initials and
-  title, and ☰ spreads them again.
+- A Today chip keeps the list to the last 24 hours. The ≡ at the right of the
+  page bar packs each book onto one line at the same type size: the mark and initials,
+  the title, then the feed, date and author; ☰ spreads them again.
 - Each book shows a mark for its section, 🏛 for politics or 🔬 for science,
-  and its feed's initials; the feed, the section, when the article was
+  and its feed's initials in a box; the feed, the section, when the article was
   published and its author above its title. The list runs newest first by that
   date, and a book whose feed gives none takes the time it arrived. A NEW tag marks each book that arrived since you
   last left the app and has not been opened from it.
-- 🔖 sets a book aside in `Read later` and ☆ moves it to `Favourites`: two
-  folders of their own, which no feed's settings reach, where a book stays
-  until you delete it.
+- Later sets a book aside in `Read later` and ☆ moves it to `Favourites`: two
+  folders of their own, which no feed's settings reach. Done, or ★ on a
+  favourite, puts the book back in the folder it came from.
 - A tap opens the book in the tablet's reader. A long press deletes it after
   asking, except in `Laptop`, whose books the laptop's sync owns. A long press
   on a folder's chip deletes the folder's books after asking, `Laptop` and
@@ -132,12 +132,6 @@ book with the page as it is now.
   list by topic, country or name, searched on the tablet with no network.
 - Import and Export the list as one OPML file, the format every feed reader
   reads, so a list moves from another reader and back.
-- Refresh on its own: off, or every 1, 3, 6 or 12 hours, 3 by default, and
-  only while the tablet is online. The line under it says when the last
-  refresh ran and what it saved.
-- Pictures in new books: Grey, the lightest a greyscale screen shows, or
-  Colour for a colour tablet. Either way no picture is wider than the screen,
-  and a picture its copy would make heavier stays as it came.
 - Each feed's row shows its site and what it keeps. Remove takes it off the
   list, and offers to delete its books too, unless another feed shares its
   folder.
@@ -147,8 +141,8 @@ Tap a feed to open its settings, each saved as it is picked:
 | Setting | Choices | Default |
 | --- | --- | --- |
 | Keep each book | 1 day, 3 days, 1 week, 1 month, for ever | for ever |
-| Keep at most | any number, 20, 50 or 100 books | any number |
-| Make | one book per article, or one book per refresh | one per article |
+| Keep at most | no limit, 20, 50 or 100 books | no limit |
+| New articles arrive as | separate books, or one book together, which holds a refresh's articles with a contents list | separate books |
 | Leave out articles holding | words, comma-separated | none |
 | Keep only articles holding | words, comma-separated | every article |
 
@@ -157,6 +151,16 @@ folder. A word matches a whole word of the title or the summary the feed gives,
 whatever its case and accents, and an article left out never comes back. The
 settings travel in the exported OPML file, in attributes other readers skip.
 Open its books shows that feed's folder on the Books tab.
+
+### Settings
+
+- Refresh on its own: off, or every 1, 3, 6 or 12 hours, 3 by default, and
+  only while the tablet is online. The line under it says when the last
+  refresh ran and what it saved.
+- Pictures in new books: Grey, the lightest a greyscale screen shows, or
+  Colour for a colour tablet. Either way no picture is wider than the screen,
+  and a picture its copy would make heavier stays as it came.
+- The books folder, and Change to pick another.
 
 ### Logs
 

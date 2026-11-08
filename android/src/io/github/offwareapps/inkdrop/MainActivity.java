@@ -44,8 +44,8 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// One activity, five screens: the books, the feeds, the logs, one feed's
-// settings, and adding a feed. It is
+// One activity, six screens: the books, the feeds, the logs, the settings,
+// one feed's settings, and adding a feed. It is
 // drawn for a greyscale e-ink screen: black, white and two greys, flat shapes,
 // large type, and nothing that animates.
 public class MainActivity extends Activity {
@@ -54,7 +54,7 @@ public class MainActivity extends Activity {
   private static final int INK = Color.BLACK, PAPER = Color.WHITE;
   private static final int GREY = 0xFF555555, PALE = 0xFFE6E6E6;
 
-  private enum Screen { BOOKS, FEEDS, LOGS, FEED, ADD }
+  private enum Screen { BOOKS, FEEDS, LOGS, SETTINGS, FEED, ADD }
 
   private SharedPreferences prefs;
   private Feeds feeds;
@@ -105,17 +105,17 @@ public class MainActivity extends Activity {
     // Android 15 draws an app under the system bars unless it asks for room.
     root.setFitsSystemWindows(true);
     root.setBackgroundColor(PAPER);
-    body = column(dp(36), dp(28), dp(36), 0);
-    list = column(dp(36), dp(8), dp(36), 0);
+    body = column(dp(24), dp(24), dp(24), 0);
+    list = column(dp(24), dp(8), dp(24), 0);
     pager = new LinearLayout(this);
     pager.setGravity(Gravity.CENTER_VERTICAL);
-    pager.setPadding(dp(36), dp(8), dp(36), dp(8));
-    foot = column(dp(36), 0, dp(36), dp(20));
+    pager.setPadding(dp(24), dp(4), dp(24), dp(4));
+    foot = column(dp(24), 0, dp(24), dp(16));
     root.addView(body);
     root.addView(list, new LinearLayout.LayoutParams(-1, 0, 1));
     // The pager keeps its height on a one-page list, so the list never resizes
     // when the bar empties and the page count holds still.
-    root.addView(pager, new LinearLayout.LayoutParams(-1, dp(84)));
+    root.addView(pager, new LinearLayout.LayoutParams(-1, dp(56)));
     root.addView(foot);
     setContentView(root);
     list.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
@@ -261,6 +261,7 @@ public class MainActivity extends Activity {
       tabs();
       if (s == Screen.BOOKS) booksScreen();
       else if (s == Screen.FEEDS) feedsScreen();
+      else if (s == Screen.SETTINGS) settingsScreen();
       else logsScreen();
     }
     fill();
@@ -280,18 +281,34 @@ public class MainActivity extends Activity {
     for (int i = page * per; i < Math.min(rows.size(), (page + 1) * per); i++) {
       list.addView(rows.get(i).get(), new LinearLayout.LayoutParams(-1, tall));
     }
-    if (pages < 2) return;
-    // The first page has no Previous and the last no Next; each keeps its room,
-    // so the page count holds still.
-    TextView back = button("‹  Previous", false, v -> turn(-1));
-    if (page == 0) back.setVisibility(View.INVISIBLE);
-    pager.addView(back);
-    TextView where = text("Page " + (page + 1) + " of " + pages, 17, GREY);
-    where.setGravity(Gravity.CENTER);
-    pager.addView(where, new LinearLayout.LayoutParams(0, -2, 1));
-    TextView next = button("Next  ›", false, v -> turn(1));
-    if (page == pages - 1) next.setVisibility(View.INVISIBLE);
-    pager.addView(next);
+    if (pages > 1) {
+      // The first page has no Previous and the last no Next; each keeps its
+      // room, so the page count holds still.
+      TextView back = pill("‹  Previous", v -> turn(-1));
+      if (page == 0) back.setVisibility(View.INVISIBLE);
+      pager.addView(back);
+      TextView where = text("Page " + (page + 1) + " of " + pages, 16, GREY);
+      where.setGravity(Gravity.CENTER);
+      pager.addView(where, new LinearLayout.LayoutParams(0, -2, 1));
+      TextView next = pill("Next  ›", v -> turn(1));
+      if (page == pages - 1) next.setVisibility(View.INVISIBLE);
+      pager.addView(next);
+    } else {
+      pager.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+    }
+    // The list-density switch, on the Books tab: ≡ packs the rows, ☰ spreads them.
+    if (screen == Screen.BOOKS && !rows.isEmpty()) {
+      boolean compact = prefs.getBoolean("compact", false);
+      TextView density = text(compact ? "☰" : "≡", 26, INK);
+      density.setGravity(Gravity.CENTER);
+      density.setContentDescription(compact ? "Normal rows" : "Compact rows");
+      density.setOnClickListener(v -> {
+        prefs.edit().putBoolean("compact", !compact).apply();
+        page = 0;
+        show(Screen.BOOKS);
+      });
+      pager.addView(density, new LinearLayout.LayoutParams(dp(56), -1));
+    }
   }
 
   // turn moves the list by one whole page and reports whether it moved.
@@ -310,30 +327,10 @@ public class MainActivity extends Activity {
   }
 
   private void header() {
-    LinearLayout row = new LinearLayout(this);
-    row.setGravity(Gravity.CENTER_VERTICAL);
-    LinearLayout words = column(0, 0, 0, 0);
     TextView title = text("ink-drop", 34, INK);
     title.setTypeface(Typeface.SERIF, Typeface.BOLD);
-    words.addView(title);
-    words.addView(text("Pages and feeds, kept for reading offline.", 17, GREY), gap(2));
-    row.addView(words, new LinearLayout.LayoutParams(0, -2, 1));
-    // The Books tab's rows, normal or compact: one line a book, more a page.
-    if (screen == Screen.BOOKS && folder() != null) {
-      boolean compact = prefs.getBoolean("compact", false);
-      // The list-density icon: ≡ packs the rows tighter, ☰ spreads them again.
-      TextView density = text(compact ? "☰" : "≡", 28, INK);
-      density.setGravity(Gravity.CENTER);
-      density.setBackground(box(PAPER, INK, 2, 6));
-      density.setContentDescription(compact ? "Normal rows" : "Compact rows");
-      density.setOnClickListener(v -> {
-        prefs.edit().putBoolean("compact", !compact).apply();
-        page = 0;
-        show(Screen.BOOKS);
-      });
-      row.addView(density, new LinearLayout.LayoutParams(dp(60), dp(60)));
-    }
-    body.addView(row);
+    body.addView(title);
+    body.addView(text("Pages and feeds, kept for reading offline.", 17, GREY), gap(2));
   }
 
   private void tabs() {
@@ -341,6 +338,7 @@ public class MainActivity extends Activity {
     row.addView(tab("Books", Screen.BOOKS));
     row.addView(tab("Feeds  " + feeds.list.size(), Screen.FEEDS));
     row.addView(tab("Logs", Screen.LOGS));
+    row.addView(tab("Settings", Screen.SETTINGS));
     body.addView(row, gap(28));
     body.addView(rule(INK), line(0));
   }
@@ -378,8 +376,7 @@ public class MainActivity extends Activity {
     if (shelfCache == null) {
       load();
       body.addView(text("Reading your books…", 17, GREY), gap(24));
-      footer();
-      return;
+        return;
     }
     List<String[]> all = unreadable ? null : shelfCache;
     // recent is every book Today keeps; the section chips count those.
@@ -404,9 +401,8 @@ public class MainActivity extends Activity {
       body.addView(rule(INK), line(20));
       List<Supplier<View>> made = new ArrayList<>();
       for (String[] b : books) made.add(() -> bookRow(b));
-      paged(made, prefs.getBoolean("compact", false) ? 58 : 86);
+      paged(made, prefs.getBoolean("compact", false) ? 44 : 80);
     }
-    footer();
   }
 
   // shelves offers Today, then one chip per folder, newest first, after All
@@ -540,14 +536,22 @@ public class MainActivity extends Activity {
     }
   }
 
-  private void footer() {
-    foot.addView(rule(PALE), line(0));
+  // settingsScreen holds what applies to every feed and book: the refresh on
+  // its own, the pictures, and the folder the books go to.
+  private void settingsScreen() {
+    if (!status.isEmpty()) body.addView(text(status, 17, INK), gap(20));
+    autoRefresh();
+    // Grey is the lightest on a greyscale screen; either way no picture is
+    // wider than the screen.
+    choices("Pictures in new books", new String[] {"Grey", "Colour"}, new int[] {0, 1}, prefs.getBoolean("colour", false) ? 1 : 0,
+        v -> prefs.edit().putBoolean("colour", v == 1).apply());
     LinearLayout row = new LinearLayout(this);
     row.setGravity(Gravity.CENTER_VERTICAL);
+    row.addView(label("Books folder"), new LinearLayout.LayoutParams(dp(230), -2));
     String id = folder() == null ? "" : DocumentsContract.getTreeDocumentId(folder());
-    row.addView(text("Books go to " + id.substring(id.indexOf(':') + 1), 15, GREY), new LinearLayout.LayoutParams(0, -2, 1));
+    row.addView(text(id.isEmpty() ? "None chosen" : id.substring(id.indexOf(':') + 1), 16, INK), new LinearLayout.LayoutParams(0, -2, 1));
     row.addView(link("Change", v -> pickFolder()));
-    foot.addView(row, gap(4));
+    body.addView(row, gap(14));
   }
 
   // logsScreen shows what each run did, newest first: every stage's exit, the
@@ -586,8 +590,8 @@ public class MainActivity extends Activity {
 
   // bookRow shows where a book comes from first: a mark for its section and its
   // feed's initials in the box, then the feed, the section and the book's age
-  // above one line of title. A compact row is one line at the same sizes: the
-  // initials beside the mark rather than under it, then the title.
+  // above the title. A compact row says as much at the same sizes, in less
+  // height: the initials beside the mark, and one line of title, not two.
   private View bookRow(String[] b) {
     boolean compact = prefs.getBoolean("compact", false);
     LinearLayout row = new LinearLayout(this);
@@ -598,12 +602,13 @@ public class MainActivity extends Activity {
     LinearLayout cover = new LinearLayout(this);
     cover.setOrientation(compact ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
     cover.setGravity(Gravity.CENTER);
-    TextView mark = text(mark(b[4], b[5]), 30, INK);
+    if (!compact) cover.setBackground(box(PALE, INK, 1, 3));
+    TextView mark = text(mark(b[4], b[5]), compact ? 22 : 28, INK);
     mark.setGravity(Gravity.CENTER);
     cover.addView(mark);
     String initials = initials(b[4]);
     if (!initials.isEmpty()) {
-      TextView who = text(initials, 13, INK);
+      TextView who = text(initials, compact ? 13 : 12, INK);
       who.setTypeface(Typeface.DEFAULT_BOLD);
       who.setLetterSpacing(0.08f);
       who.setGravity(Gravity.CENTER);
@@ -611,7 +616,7 @@ public class MainActivity extends Activity {
       if (compact) beside.leftMargin = dp(6);
       cover.addView(who, beside);
     }
-    row.addView(cover, new LinearLayout.LayoutParams(dp(compact ? 84 : 60), dp(compact ? 48 : 72)));
+    row.addView(cover, new LinearLayout.LayoutParams(dp(compact ? 72 : 58), dp(compact ? 36 : 68)));
 
     LinearLayout words = new LinearLayout(this);
     words.setOrientation(LinearLayout.VERTICAL);
@@ -631,31 +636,44 @@ public class MainActivity extends Activity {
     }
     TextView name = text(title, 17, INK);
     name.setTypeface(Typeface.SERIF);
-    name.setMaxLines(1);
+    name.setMaxLines(compact ? 1 : 2);
     name.setEllipsize(TextUtils.TruncateAt.END);
+    String age = DateUtils.getRelativeTimeSpanString(Long.parseLong(b[6]), System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString();
+    String from = (b[4].isEmpty() ? "ink-drop" : b[4]) + (b[5].isEmpty() ? "" : "  ›  " + b[5]);
+    String said = from.toUpperCase(Locale.getDefault()) + "  ·  " + age + (b[7].isEmpty() ? "" : "  ·  " + b[7]);
+    TextView source = text(said, 12, compact ? GREY : INK);
+    source.setTypeface(Typeface.DEFAULT_BOLD);
+    source.setLetterSpacing(0.06f);
+    source.setMaxLines(1);
+    source.setEllipsize(TextUtils.TruncateAt.END);
     if (compact) {
+      // One line: the title, then what the normal row says above it.
       top.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+      source.setMaxWidth(dp(300));
+      LinearLayout.LayoutParams right = new LinearLayout.LayoutParams(-2, -2);
+      right.leftMargin = dp(12);
+      top.addView(source, right);
       words.addView(top);
     } else {
-      String age = DateUtils.getRelativeTimeSpanString(Long.parseLong(b[6]), System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString();
-      String from = (b[4].isEmpty() ? "ink-drop" : b[4]) + (b[5].isEmpty() ? "" : "  ›  " + b[5]);
-      TextView source = text(from.toUpperCase(Locale.getDefault()) + "  ·  " + age + (b[7].isEmpty() ? "" : "  ·  " + b[7]), 12, INK);
-      source.setTypeface(Typeface.DEFAULT_BOLD);
-      source.setLetterSpacing(0.06f);
-      source.setMaxLines(1);
-      source.setEllipsize(TextUtils.TruncateAt.END);
       top.addView(source, new LinearLayout.LayoutParams(0, -2, 1));
       words.addView(top);
       words.addView(name, gap(2));
     }
     boolean pdf = b[1].endsWith(".pdf");
     row.addView(words, new LinearLayout.LayoutParams(0, -2, 1));
-    // 🔖 sets the book aside in Read later and ☆ moves it to Favourites, both
+    // Later sets the book aside in Read later and ☆ moves it to Favourites, both
     // out of every feed's settings; a favourite stays one.
     if (!Refresher.underLaptop(b[0])) {
       boolean fav = Refresher.FAVOURITES.equalsIgnoreCase(b[4]), later = Refresher.READ_LATER.equalsIgnoreCase(b[4]);
-      if (!fav && !later) row.addView(icon("🔖", v -> keep(b[0], title, Refresher.READ_LATER)), new LinearLayout.LayoutParams(dp(56), -1));
-      row.addView(icon(fav ? "★" : "☆", fav ? null : v -> keep(b[0], title, Refresher.FAVOURITES)), new LinearLayout.LayoutParams(dp(56), -1));
+      LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+      lp.leftMargin = dp(8);
+      if (!fav && !later) row.addView(pill("Later", v -> keep(b[0], title, Refresher.READ_LATER)), lp);
+      // Done, and the star of a favourite, put the book back where it came from.
+      if (later) row.addView(pill("Done", v -> release(b[0], title)), lp);
+      row.addView(icon(fav ? "★" : "☆", v -> {
+        if (fav) release(b[0], title);
+        else keep(b[0], title, Refresher.FAVOURITES);
+      }), new LinearLayout.LayoutParams(dp(44), -1));
     }
 
     Uri doc = DocumentsContract.buildDocumentUriUsingTree(folder(), b[0]);
@@ -713,7 +731,7 @@ public class MainActivity extends Activity {
     String key = java.text.Normalizer.normalize(section.toLowerCase(Locale.ROOT), java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
     if (MARKS.containsKey(key)) return MARKS.get(key);
     if (shelf.equalsIgnoreCase(Refresher.FAVOURITES)) return "★";
-    if (shelf.equalsIgnoreCase(Refresher.READ_LATER)) return "🔖";
+    if (shelf.equalsIgnoreCase(Refresher.READ_LATER)) return "◔";
     if (shelf.equalsIgnoreCase("Pages")) return "📄";
     if (shelf.equalsIgnoreCase("Laptop")) return "💻";
     return "📰";
@@ -737,11 +755,6 @@ public class MainActivity extends Activity {
     actions.addView(button("Export", false, v -> exportFeeds()));
     body.addView(actions, gap(28));
     if (!status.isEmpty()) body.addView(text(status, 17, INK), gap(12));
-    autoRefresh();
-    // Grey is the lightest on a greyscale screen; either way no picture is
-    // wider than the screen.
-    choices("Pictures in new books", new String[] {"Grey", "Colour"}, new int[] {0, 1}, prefs.getBoolean("colour", false) ? 1 : 0,
-        v -> prefs.edit().putBoolean("colour", v == 1).apply());
 
     if (feeds.list.isEmpty()) {
       body.addView(text("No feeds yet. Add one by its address, find one by topic, or import a list from another reader.", 18, GREY), gap(32));
@@ -853,7 +866,7 @@ public class MainActivity extends Activity {
     int d = f.keepDays;
     String s = "keeps " + (d == 0 ? "for ever" : d == 1 ? "1 day" : d == 7 ? "1 week" : d == 30 ? "1 month" : d + " days");
     if (f.keepMost > 0) s += ", at most " + f.keepMost;
-    if (f.together) s += ", one book per refresh";
+    if (f.together) s += ", articles together";
     if (!f.mute.isEmpty() || !f.only.isEmpty()) s += ", words picked";
     return s;
   }
@@ -890,7 +903,7 @@ public class MainActivity extends Activity {
             show(Screen.FEED);
           });
     });
-    choices("Keep at most", new String[] {"Any number", "20 books", "50 books", "100 books"}, new int[] {0, 20, 50, 100}, f.keepMost, v -> {
+    choices("Keep at most", new String[] {"No limit", "20 books", "50 books", "100 books"}, new int[] {0, 20, 50, 100}, f.keepMost, v -> {
       if (v == 0) {
         change(g -> g.keepMost = v);
         return;
@@ -902,7 +915,7 @@ public class MainActivity extends Activity {
           });
     });
     body.addView(text("After each refresh, the books past these leave the " + shelf + " folder.", 15, GREY), gap(8));
-    choices("Make", new String[] {"One book per article", "One book per refresh"}, new int[] {0, 1}, f.together ? 1 : 0,
+    choices("New articles arrive as", new String[] {"Separate books", "One book together"}, new int[] {0, 1}, f.together ? 1 : 0,
         v -> change(g -> g.together = v == 1));
     words("Leave out articles holding", "Words, comma-separated: horoscope, football", f.mute, w -> change(g -> g.mute = w));
     words("Keep only articles holding", "Words, comma-separated; empty keeps every article", f.only, w -> change(g -> g.only = w));
@@ -933,7 +946,9 @@ public class MainActivity extends Activity {
   // when the field loses focus, or when the screen changes. A refresh running
   // meanwhile never sees a word half typed, "f" of "football".
   private void words(String title, String hint, String now, java.util.function.Consumer<String> set) {
-    body.addView(label(title), gap(24));
+    LinearLayout line = new LinearLayout(this);
+    line.setGravity(Gravity.CENTER_VERTICAL);
+    line.addView(label(title), new LinearLayout.LayoutParams(dp(230), -2));
     EditText e = field(hint, EditorInfo.IME_ACTION_DONE);
     e.setText(now);
     // The words last saved, so typing them back after a save is a change too.
@@ -955,14 +970,17 @@ public class MainActivity extends Activity {
       e.clearFocus();
       return true;
     });
-    body.addView(e, gap(10));
+    line.addView(e, new LinearLayout.LayoutParams(0, -2, 1));
+    body.addView(line, gap(14));
   }
 
   // choices adds a label and one chip per value, the chosen one filled; a tap
   // passes its value to pick and draws the screen again.
   private void choices(String title, String[] labels, int[] values, int chosen, java.util.function.IntConsumer pick) {
-    body.addView(label(title), gap(28));
+    // The label and its chips on one line.
     LinearLayout row = new LinearLayout(this);
+    row.setGravity(Gravity.CENTER_VERTICAL);
+    row.addView(label(title), new LinearLayout.LayoutParams(dp(230), -2));
     for (int i = 0; i < labels.length; i++) {
       int v = values[i];
       LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2);
@@ -972,7 +990,7 @@ public class MainActivity extends Activity {
         show(screen);
       }), p);
     }
-    body.addView(row, gap(10));
+    body.addView(row, gap(14));
   }
 
   // autoRefresh offers how often the feeds refresh on their own, and says
@@ -1274,6 +1292,28 @@ public class MainActivity extends Activity {
         load();
       });
     }).start();
+  }
+
+  // release puts a book from Favourites or Read later back in its folder.
+  private void release(String doc, String title) {
+    setStatus("Putting “" + title + "” back…");
+    new Thread(() -> {
+      boolean moved = refresher.release(doc);
+      runOnUiThread(() -> {
+        status = moved ? "“" + title + "” is back in its folder." : "Its first folder is gone or not known: delete it with a long press, or keep it here.";
+        load();
+      });
+    }).start();
+  }
+
+  // pill is a small word button on a row.
+  private TextView pill(String word, View.OnClickListener click) {
+    TextView t = text(word, 14, INK);
+    t.setGravity(Gravity.CENTER);
+    t.setPadding(dp(10), dp(4), dp(10), dp(4));
+    t.setBackground(box(PAPER, INK, 1, 12));
+    t.setOnClickListener(click);
+    return t;
   }
 
   // icon is a symbol a tap acts on, or that only shows where click is null.
