@@ -104,10 +104,11 @@ the e-ink screen leaves no ghosts.
 - A chip per folder, newest first, after All, `Pages` and `Laptop`: the feeds
   shown two rows deep, the rest a tap away on the Feeds tab. Under a feed's
   chip, a chip per section with its count, `Politique 12`, the fullest first.
-- A Today chip keeps the list to the last 24 hours. Compact rows, at the top
-  right, show each book on one line, its box and its title.
+- A Today chip keeps the list to the last 24 hours. The ≡ at the top right
+  packs each book onto one line, its mark and its title, and ☰ spreads them
+  again.
 - Each book shows a mark for its section, 🏛 for politics or 🔬 for science,
-  and its feed's initials in a box; the feed, the section, when the article was
+  and its feed's initials; the feed, the section, when the article was
   published and its author above its title. The list runs newest first by that
   date, and a book whose feed gives none takes the time it arrived. A NEW tag marks each book that arrived since you
   last left the app and has not been opened from it.

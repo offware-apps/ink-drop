@@ -321,11 +321,17 @@ public class MainActivity extends Activity {
     // The Books tab's rows, normal or compact: one line a book, more a page.
     if (screen == Screen.BOOKS && folder() != null) {
       boolean compact = prefs.getBoolean("compact", false);
-      row.addView(button(compact ? "Normal rows" : "Compact rows", false, v -> {
+      // The list-density icon: ≡ packs the rows tighter, ☰ spreads them again.
+      TextView density = text(compact ? "☰" : "≡", 28, INK);
+      density.setGravity(Gravity.CENTER);
+      density.setBackground(box(PAPER, INK, 2, 6));
+      density.setContentDescription(compact ? "Normal rows" : "Compact rows");
+      density.setOnClickListener(v -> {
         prefs.edit().putBoolean("compact", !compact).apply();
         page = 0;
         show(Screen.BOOKS);
-      }));
+      });
+      row.addView(density, new LinearLayout.LayoutParams(dp(60), dp(60)));
     }
     body.addView(row);
   }
@@ -590,19 +596,18 @@ public class MainActivity extends Activity {
     LinearLayout cover = new LinearLayout(this);
     cover.setOrientation(LinearLayout.VERTICAL);
     cover.setGravity(Gravity.CENTER);
-    cover.setBackground(box(PALE, INK, 1, 3));
-    TextView mark = text(mark(b[4], b[5]), compact ? 18 : 26, INK);
+    TextView mark = text(mark(b[4], b[5]), compact ? 24 : 30, INK);
     mark.setGravity(Gravity.CENTER);
     cover.addView(mark);
     String initials = initials(b[4]);
     if (!initials.isEmpty()) {
-      TextView who = text(initials, compact ? 10 : 13, INK);
+      TextView who = text(initials, compact ? 11 : 13, INK);
       who.setTypeface(Typeface.DEFAULT_BOLD);
       who.setLetterSpacing(0.08f);
       who.setGravity(Gravity.CENTER);
       cover.addView(who);
     }
-    row.addView(cover, new LinearLayout.LayoutParams(dp(compact ? 42 : 58), dp(compact ? 46 : 70)));
+    row.addView(cover, new LinearLayout.LayoutParams(dp(compact ? 48 : 60), dp(compact ? 52 : 72)));
 
     LinearLayout words = new LinearLayout(this);
     words.setOrientation(LinearLayout.VERTICAL);
