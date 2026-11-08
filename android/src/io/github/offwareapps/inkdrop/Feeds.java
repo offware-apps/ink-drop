@@ -23,9 +23,9 @@ final class Feeds {
     final String topic;
     final String about;
     // What the feed keeps, set on its own screen: each book keepDays days, 0
-    // for ever, and its newest keepMost, 0 for any number. A feed added here
-    // keeps a week; one read from a list saying nothing keeps its books.
-    int keepDays = 7, keepMost;
+    // for ever, and its newest keepMost, 0 for any number. Every feed keeps
+    // all its books until the user picks a limit there.
+    int keepDays, keepMost;
     // Words, comma-separated: an article holding a mute word is left out, and
     // with only set, one holding none of its words.
     String mute = "", only = "";

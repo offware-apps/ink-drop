@@ -54,13 +54,16 @@ the e-ink screen leaves no ghosts.
 - A chip per folder, newest first, after All, `Pages` and `Laptop`: the feeds
   shown two rows deep, the rest a tap away on the Feeds tab. Under a feed's
   chip, a chip per section with its count, `Politique 12`, the fullest first.
-- A Today chip keeps the list to the last 24 hours.
+- A Today chip keeps the list to the last 24 hours, and a Compact chip shows
+  each book on two short lines, about twice as many a page.
 - Each book shows a mark for its section, 🏛 for politics or 🔬 for science,
   and its feed's initials; the feed and section above the title; then EPUB or
   PDF, its size and its age. A NEW tag marks each book that arrived since you
   last left the app and has not been opened from it.
 - A tap opens the book in the tablet's reader. A long press deletes it after
-  asking, except in `Laptop`, whose books the laptop's sync owns.
+  asking, except in `Laptop`, whose books the laptop's sync owns. A long press
+  on a folder's chip deletes the folder's books after asking, `Laptop` and
+  `Pages` aside.
 
 To save a page, share it to ink-drop from the browser: it becomes a book in
 `Pages`, its article alone, its pictures inside it. A share made while a
@@ -88,7 +91,7 @@ Tap a feed to open its settings, each saved as it is picked:
 
 | Setting | Choices | Default |
 | --- | --- | --- |
-| Keep each book | 1 day, 3 days, 1 week, 1 month, for ever | 1 week, for ever when imported |
+| Keep each book | 1 day, 3 days, 1 week, 1 month, for ever | for ever |
 | Keep at most | any number, 20, 50 or 100 books | any number |
 | Make | one book per article, or one book per refresh | one per article |
 | Leave out articles holding | words, comma-separated | none |

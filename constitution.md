@@ -14,7 +14,7 @@ from it.
 | I. Offline first | Converting and reading need no network. Fetching runs outside the app, the case article I names as scheduled outside it. |
 | II. Self-reliant, no account | Nothing to sign up for. The stages are programs rather than static files: a browser page reads another site only when that site sends `Access-Control-Allow-Origin`, which Wikipedia and the Go blog do not, so the fetch is a tool and not an app. |
 | III. Private by default | No telemetry; the only requests are the fetches of the URLs the user hands it. |
-| IV. One portable file | The library is plain documents and documented, versioned JSON sidecars, with no database. |
+| IV. One portable file | The library is plain documents and documented, versioned JSON sidecars, with no database. The tablet app asks before every delete it makes on the user's word: a book, a folder, a feed, the log, or a keep setting that deletes from the next refresh on. |
 | V. Aggregator | Every sidecar records the source URL and the fetch time. |
 | VI. Network is opt-in | A stage touches the network only for a URL the user names. |
 | VII. Open and replaceable | MIT rather than the AGPL-3.0 default, with open dependencies only: [go-readability](https://codeberg.org/readeck/go-readability) and [goldmark](https://github.com/yuin/goldmark) under MIT and `golang.org/x/net` under BSD. |

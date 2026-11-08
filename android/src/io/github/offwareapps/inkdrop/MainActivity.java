@@ -373,7 +373,7 @@ public class MainActivity extends Activity {
       body.addView(rule(INK), line(20));
       List<Supplier<View>> made = new ArrayList<>();
       for (String[] b : books) made.add(() -> bookRow(b));
-      paged(made, 125);
+      paged(made, prefs.getBoolean("compact", false) ? 64 : 125);
     }
     footer();
   }
@@ -401,6 +401,14 @@ public class MainActivity extends Activity {
       page = 0;
       show(Screen.BOOKS);
     }), after);
+    // Compact rows: one line of source and age, one of title, twice as many a page.
+    boolean compact = prefs.getBoolean("compact", false);
+    line.addView(chip("Compact", compact, v -> {
+      prefs.edit().putBoolean("compact", !compact).apply();
+      page = 0;
+      show(Screen.BOOKS);
+    }), after);
+    used += 11;
     for (int i = 0; i < names.size(); i++) {
       String n = names.get(i);
       String label = n == null ? "All" : n;
@@ -423,14 +431,52 @@ public class MainActivity extends Activity {
       boolean on = n == null ? filter == null : Refresher.sameShelf(n, filter);
       LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2);
       p.rightMargin = dp(10);
-      line.addView(chip(label, on, v -> {
+      TextView c = chip(label, on, v -> {
         filter = n;
         section = null;
         page = 0;
         show(Screen.BOOKS);
-      }), p);
+      });
+      // A long press deletes the folder's books, and so its chip; Laptop is
+      // the laptop's sync's and Pages holds the pages shared, each its own.
+      if (n != null && !n.equalsIgnoreCase("Laptop") && !n.equalsIgnoreCase("Pages")) {
+        c.setOnLongClickListener(v -> {
+          deleteFolder(n, all);
+          return true;
+        });
+      }
+      line.addView(c, p);
       used += label.length() + 4;
     }
+  }
+
+  // deleteFolder deletes every book in a folder of the Books tab after asking,
+  // since nothing brings them back. A feed still listed fills it again.
+  private void deleteFolder(String shelf, List<String[]> all) {
+    int n = 0;
+    for (String[] b : all) if (Refresher.sameShelf(shelf, b[4])) n++;
+    String books = n + (n == 1 ? " book" : " books");
+    String feed = null;
+    for (Feeds.Feed f : feeds.list) if (Refresher.sameShelf(Refresher.shelf(f.title), shelf)) feed = f.title;
+    new AlertDialog.Builder(this)
+        .setTitle("Delete the " + shelf + " folder?")
+        .setMessage("Its " + books + " leave the tablet and cannot be brought back."
+            + (feed == null ? "" : " The " + feed + " feed fills it again at its next refresh: remove the feed on the Feeds tab to stop it."))
+        .setPositiveButton("Delete " + books, (d, w) -> {
+          setStatus("Deleting " + books + "…");
+          new Thread(() -> {
+            boolean gone = refresher.deleteShelf(shelf);
+            runOnUiThread(() -> {
+              status = gone ? "Deleted the " + shelf + " folder." : "Some books in " + shelf + " could not be deleted: see Logs.";
+              if (Refresher.sameShelf(filter, shelf)) filter = null;
+              section = null;
+              shelfCache = null;
+              show(Screen.BOOKS);
+            });
+          }).start();
+        })
+        .setNegativeButton("Cancel", null)
+        .show();
   }
 
   // sections offers, under the chosen folder, one smaller chip per section
@@ -485,10 +531,10 @@ public class MainActivity extends Activity {
     LinearLayout actions = new LinearLayout(this);
     actions.setGravity(Gravity.CENTER_VERTICAL);
     actions.addView(text("What ink-drop did, newest first.", 17, GREY), new LinearLayout.LayoutParams(0, -2, 1));
-    actions.addView(button("Clear", false, v -> {
+    actions.addView(button("Clear", false, v -> confirm("Clear the log?", "What ink-drop did so far leaves the Logs tab.", "Clear", () -> {
       refresher.clearLog();
       show(Screen.LOGS);
-    }));
+    })));
     body.addView(actions, gap(28));
     List<String> lines = refresher.logLines();
     if (lines.isEmpty()) {
@@ -515,35 +561,44 @@ public class MainActivity extends Activity {
 
   // bookRow shows where a book comes from first: a mark for its section and its
   // feed's initials in the box, and the feed and section in capitals above the
-  // title, since a list of headlines is read by source before by title.
+  // title, since a list of headlines is read by source before by title. A
+  // compact row keeps the mark, the source with its age, and one line of title.
   private View bookRow(String[] b) {
+    boolean compact = prefs.getBoolean("compact", false);
     LinearLayout row = new LinearLayout(this);
     row.setGravity(Gravity.CENTER_VERTICAL);
-    row.setPadding(0, dp(12), 0, dp(12));
+    row.setPadding(0, dp(compact ? 4 : 12), 0, dp(compact ? 4 : 12));
     String title = title(b[0], b[1]);
+    String age = DateUtils.getRelativeTimeSpanString(Long.parseLong(b[3]), System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString();
 
-    LinearLayout cover = new LinearLayout(this);
-    cover.setOrientation(LinearLayout.VERTICAL);
-    cover.setGravity(Gravity.CENTER);
-    cover.setBackground(box(PALE, INK, 1, 3));
-    TextView mark = text(mark(b[4], b[5]), 28, INK);
-    mark.setGravity(Gravity.CENTER);
-    cover.addView(mark);
-    String initials = initials(b[4]);
-    if (!initials.isEmpty()) {
-      TextView who = text(initials, 13, INK);
-      who.setTypeface(Typeface.DEFAULT_BOLD);
-      who.setLetterSpacing(0.08f);
-      who.setGravity(Gravity.CENTER);
-      cover.addView(who, gap(2));
+    if (compact) {
+      TextView mark = text(mark(b[4], b[5]), 20, INK);
+      mark.setGravity(Gravity.CENTER);
+      row.addView(mark, new LinearLayout.LayoutParams(dp(40), -2));
+    } else {
+      LinearLayout cover = new LinearLayout(this);
+      cover.setOrientation(LinearLayout.VERTICAL);
+      cover.setGravity(Gravity.CENTER);
+      cover.setBackground(box(PALE, INK, 1, 3));
+      TextView mark = text(mark(b[4], b[5]), 28, INK);
+      mark.setGravity(Gravity.CENTER);
+      cover.addView(mark);
+      String initials = initials(b[4]);
+      if (!initials.isEmpty()) {
+        TextView who = text(initials, 13, INK);
+        who.setTypeface(Typeface.DEFAULT_BOLD);
+        who.setLetterSpacing(0.08f);
+        who.setGravity(Gravity.CENTER);
+        cover.addView(who, gap(2));
+      }
+      row.addView(cover, new LinearLayout.LayoutParams(dp(64), dp(88)));
     }
-    row.addView(cover, new LinearLayout.LayoutParams(dp(64), dp(88)));
 
     LinearLayout words = new LinearLayout(this);
     words.setOrientation(LinearLayout.VERTICAL);
-    words.setPadding(dp(20), 0, 0, 0);
+    words.setPadding(dp(compact ? 12 : 20), 0, 0, 0);
     String from = (b[4].isEmpty() ? "ink-drop" : b[4]) + (b[5].isEmpty() ? "" : "  ›  " + b[5]);
-    TextView source = text(from.toUpperCase(Locale.getDefault()), 13, INK);
+    TextView source = text(from.toUpperCase(Locale.getDefault()) + (compact ? "  ·  " + age : ""), compact ? 12 : 13, INK);
     source.setTypeface(Typeface.DEFAULT_BOLD);
     source.setLetterSpacing(0.06f);
     source.setMaxLines(1);
@@ -563,15 +618,16 @@ public class MainActivity extends Activity {
     }
     top.addView(source, new LinearLayout.LayoutParams(0, -2, 1));
     words.addView(top);
-    TextView name = text(title, 20, INK);
+    TextView name = text(title, compact ? 17 : 20, INK);
     name.setTypeface(Typeface.SERIF);
-    name.setMaxLines(2);
+    name.setMaxLines(compact ? 1 : 2);
     name.setEllipsize(TextUtils.TruncateAt.END);
-    words.addView(name, gap(4));
+    words.addView(name, gap(compact ? 2 : 4));
     boolean pdf = b[1].endsWith(".pdf");
-    String meta = (pdf ? "PDF" : "EPUB") + "  ·  " + Math.max(1, Long.parseLong(b[2]) / 1024) + " KB  ·  "
-        + DateUtils.getRelativeTimeSpanString(Long.parseLong(b[3]), System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS);
-    words.addView(text(meta, 14, GREY), gap(4));
+    if (!compact) {
+      String meta = (pdf ? "PDF" : "EPUB") + "  ·  " + Math.max(1, Long.parseLong(b[2]) / 1024) + " KB  ·  " + age;
+      words.addView(text(meta, 14, GREY), gap(4));
+    }
     row.addView(words, new LinearLayout.LayoutParams(0, -2, 1));
 
     Uri doc = DocumentsContract.buildDocumentUriUsingTree(folder(), b[0]);
@@ -734,7 +790,7 @@ public class MainActivity extends Activity {
       runOnUiThread(() -> {
         if (isFinishing() || isDestroyed()) return;
         if (count == 0) {
-          drop.run();
+          confirm("Remove " + f.title + "?", "It leaves your feeds; its folder holds no books.", "Remove", drop);
           return;
         }
         String books = count + (count == 1 ? " book" : " books");
@@ -790,10 +846,31 @@ public class MainActivity extends Activity {
       page = 0;
       show(Screen.BOOKS);
     }), gap(20));
-    choices("Keep each book", new String[] {"1 day", "3 days", "1 week", "1 month", "For ever"}, new int[] {1, 3, 7, 30, 0}, f.keepDays,
-        v -> change(g -> g.keepDays = v));
-    choices("Keep at most", new String[] {"Any number", "20 books", "50 books", "100 books"}, new int[] {0, 20, 50, 100}, f.keepMost,
-        v -> change(g -> g.keepMost = v));
+    String[] dayWords = {"1 day", "3 days", "1 week", "1 month", "For ever"};
+    int[] dayValues = {1, 3, 7, 30, 0};
+    choices("Keep each book", dayWords, dayValues, f.keepDays, v -> {
+      if (v == 0) {
+        change(g -> g.keepDays = v);
+        return;
+      }
+      String words = dayWords[java.util.Arrays.stream(dayValues).boxed().toList().indexOf(v)].toLowerCase(Locale.ROOT);
+      confirm("Keep each book " + words + "?", "From the next refresh on, the books older than " + words + " are deleted from the " + shelf + " folder.", "Keep " + words,
+          () -> {
+            change(g -> g.keepDays = v);
+            show(Screen.FEED);
+          });
+    });
+    choices("Keep at most", new String[] {"Any number", "20 books", "50 books", "100 books"}, new int[] {0, 20, 50, 100}, f.keepMost, v -> {
+      if (v == 0) {
+        change(g -> g.keepMost = v);
+        return;
+      }
+      confirm("Keep at most " + v + " books?", "From the next refresh on, the books past the newest " + v + " are deleted from the " + shelf + " folder.", "Keep " + v,
+          () -> {
+            change(g -> g.keepMost = v);
+            show(Screen.FEED);
+          });
+    });
     body.addView(text("After each refresh, the books past these leave the " + shelf + " folder.", 15, GREY), gap(8));
     choices("Make", new String[] {"One book per article", "One book per refresh"}, new int[] {0, 1}, f.together ? 1 : 0,
         v -> change(g -> g.together = v == 1));
@@ -810,6 +887,16 @@ public class MainActivity extends Activity {
     if (f == null) return;
     c.accept(f);
     saveFeeds("");
+  }
+
+  // confirm asks before anything is deleted, and runs yes only on its button.
+  private void confirm(String title, String message, String button, Runnable yes) {
+    new AlertDialog.Builder(this)
+        .setTitle(title)
+        .setMessage(message)
+        .setPositiveButton(button, (d, w) -> yes.run())
+        .setNegativeButton("Cancel", null)
+        .show();
   }
 
   // words adds a labelled field whose words go to set once typed: on Done,
@@ -994,11 +1081,15 @@ public class MainActivity extends Activity {
         String listed = f.title;
         for (Feeds.Feed g : feeds.list) if (g.url.equals(f.url)) listed = g.title;
         String title = listed;
-        feeds.remove(f.url);
-        new Thread(() -> refresher.dropWork(f.url, title, true)).start();
-        add.setText("Add");
-        add.setTextColor(PAPER);
-        add.setBackground(box(INK, INK, 2, 6));
+        confirm("Remove " + title + "?", "It leaves your feeds; its books stay.", "Remove", () -> {
+          feeds.remove(f.url);
+          new Thread(() -> refresher.dropWork(f.url, title, true)).start();
+          add.setText("Add");
+          add.setTextColor(PAPER);
+          add.setBackground(box(INK, INK, 2, 6));
+          saveFeeds("");
+        });
+        return;
       } else {
         feeds.add(new Feeds.Feed(f.title, f.url, f.topic, f.about));
         add.setText("Added");

@@ -79,7 +79,7 @@ public final class RulesTest {
     want("for ever wins over a week", String.valueOf(Refresher.looser(0, 7)), "0");
     want("a week wins over a day", String.valueOf(Refresher.looser(1, 7)), "7");
     Feeds.Feed f = new Feeds.Feed("Go", "https://go.dev/blog/feed.atom", "", "");
-    want("a new feed keeps a week", MainActivity.keeps(f), "keeps 1 week");
+    want("a new feed keeps every book", MainActivity.keeps(f), "keeps for ever");
     f.keepDays = 0;
     f.keepMost = 50;
     f.together = true;
