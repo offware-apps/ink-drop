@@ -105,8 +105,8 @@ the e-ink screen leaves no ghosts.
   shown two rows deep, the rest a tap away on the Feeds tab. Under a feed's
   chip, a chip per section with its count, `Politique 12`, the fullest first.
 - A Today chip keeps the list to the last 24 hours. The ≡ at the top right
-  packs each book onto one line, its mark and its title, and ☰ spreads them
-  again.
+  packs each book onto one line at the same type size, its mark, initials and
+  title, and ☰ spreads them again.
 - Each book shows a mark for its section, 🏛 for politics or 🔬 for science,
   and its feed's initials; the feed, the section, when the article was
   published and its author above its title. The list runs newest first by that

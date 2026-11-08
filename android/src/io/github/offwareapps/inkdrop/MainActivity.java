@@ -404,7 +404,7 @@ public class MainActivity extends Activity {
       body.addView(rule(INK), line(20));
       List<Supplier<View>> made = new ArrayList<>();
       for (String[] b : books) made.add(() -> bookRow(b));
-      paged(made, prefs.getBoolean("compact", false) ? 54 : 86);
+      paged(made, prefs.getBoolean("compact", false) ? 58 : 86);
     }
     footer();
   }
@@ -585,38 +585,41 @@ public class MainActivity extends Activity {
 
   // bookRow shows where a book comes from first: a mark for its section and its
   // feed's initials in the box, then the feed, the section and the book's age
-  // above one line of title. A compact row is a smaller box and the title alone.
+  // above one line of title. A compact row is one line at the same sizes: the
+  // initials beside the mark rather than under it, then the title.
   private View bookRow(String[] b) {
     boolean compact = prefs.getBoolean("compact", false);
     LinearLayout row = new LinearLayout(this);
     row.setGravity(Gravity.CENTER_VERTICAL);
-    row.setPadding(0, dp(compact ? 2 : 4), 0, dp(compact ? 2 : 4));
+    row.setPadding(0, dp(4), 0, dp(4));
     String title = title(b[0], b[1]);
 
     LinearLayout cover = new LinearLayout(this);
-    cover.setOrientation(LinearLayout.VERTICAL);
+    cover.setOrientation(compact ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
     cover.setGravity(Gravity.CENTER);
-    TextView mark = text(mark(b[4], b[5]), compact ? 24 : 30, INK);
+    TextView mark = text(mark(b[4], b[5]), 30, INK);
     mark.setGravity(Gravity.CENTER);
     cover.addView(mark);
     String initials = initials(b[4]);
     if (!initials.isEmpty()) {
-      TextView who = text(initials, compact ? 11 : 13, INK);
+      TextView who = text(initials, 13, INK);
       who.setTypeface(Typeface.DEFAULT_BOLD);
       who.setLetterSpacing(0.08f);
       who.setGravity(Gravity.CENTER);
-      cover.addView(who);
+      LinearLayout.LayoutParams beside = new LinearLayout.LayoutParams(-2, -2);
+      if (compact) beside.leftMargin = dp(6);
+      cover.addView(who, beside);
     }
-    row.addView(cover, new LinearLayout.LayoutParams(dp(compact ? 48 : 60), dp(compact ? 52 : 72)));
+    row.addView(cover, new LinearLayout.LayoutParams(dp(compact ? 84 : 60), dp(compact ? 48 : 72)));
 
     LinearLayout words = new LinearLayout(this);
     words.setOrientation(LinearLayout.VERTICAL);
-    words.setPadding(dp(compact ? 10 : 12), 0, 0, 0);
+    words.setPadding(dp(12), 0, 0, 0);
     LinearLayout top = new LinearLayout(this);
     top.setGravity(Gravity.CENTER_VERTICAL);
     java.util.Set<String> opened = prefs.getStringSet("opened", java.util.Set.of());
     if (Long.parseLong(b[3]) > newSince && !opened.contains(b[0])) {
-      TextView tag = text("NEW", compact ? 9 : 11, PAPER);
+      TextView tag = text("NEW", 11, PAPER);
       tag.setTypeface(Typeface.DEFAULT_BOLD);
       tag.setLetterSpacing(0.1f);
       tag.setPadding(dp(5), dp(1), dp(5), dp(1));
@@ -625,7 +628,7 @@ public class MainActivity extends Activity {
       p.rightMargin = dp(8);
       top.addView(tag, p);
     }
-    TextView name = text(title, compact ? 15 : 17, INK);
+    TextView name = text(title, 17, INK);
     name.setTypeface(Typeface.SERIF);
     name.setMaxLines(1);
     name.setEllipsize(TextUtils.TruncateAt.END);
@@ -649,7 +652,7 @@ public class MainActivity extends Activity {
     // The star moves the book to Favourites, out of every feed's settings.
     if (!Refresher.underLaptop(b[0])) {
       boolean fav = Refresher.FAVOURITES.equalsIgnoreCase(b[4]);
-      TextView star = text(fav ? "★" : "☆", compact ? 22 : 28, INK);
+      TextView star = text(fav ? "★" : "☆", 28, INK);
       star.setGravity(Gravity.CENTER);
       if (!fav) star.setOnClickListener(v -> favourite(b[0], title));
       row.addView(star, new LinearLayout.LayoutParams(dp(56), -1));
