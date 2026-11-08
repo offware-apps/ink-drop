@@ -94,7 +94,7 @@ final class Refresher {
           if (!f.mute.isEmpty()) args.addAll(List.of("-mute", f.mute));
           if (!f.only.isEmpty()) args.addAll(List.of("-only", f.only));
           stage("inkfeed", List.of(f.url), failed, args.toArray(new String[0]));
-          made += bind(dir, shelf(f.title), true, failed);
+          made += bind(dir, shelf(f.title), Feeds.host(f.url), failed);
         } catch (Exception e) {
           log("feed " + f.title + ": " + e);
           failed.add(f.url);
@@ -134,7 +134,7 @@ final class Refresher {
       }
       // A page ink-readable finds no article in is no book, as on the laptop.
       for (String item : raw) if (!read.contains(item)) forget(new File(item));
-      return bind(dir, "Pages", false, failed);
+      return bind(dir, "Pages", null, failed);
     });
   }
 
@@ -230,7 +230,7 @@ final class Refresher {
   // a run that fails part way, the folder gone or the job stopped, leaves the
   // rest for the next run. A page ink-epub refuses is dropped, since it never
   // will be a book.
-  private int bind(File dir, String shelf, boolean sections, List<String> failed) throws Exception {
+  private int bind(File dir, String shelf, String site, List<String> failed) throws Exception {
     // A stage killed mid-write leaves its temporary files behind.
     for (File d : new File[] {dir, new File(dir, ".ink"), new File(dir, ".ink/feeds"), new File(dir, "books"), new File(dir, "books/.ink")}) {
       File[] tmp = d.listFiles((x, n) -> n.startsWith(".ink-tmp"));
@@ -263,7 +263,7 @@ final class Refresher {
       try {
         for (String b : out) {
           File book = new File(b);
-          if (copy(book, shelf, sections)) made++;
+          if (copy(book, shelf, site)) made++;
           forget(book);
         }
         forget(page);
@@ -526,22 +526,49 @@ final class Refresher {
 
   // release moves a book out of Favourites or Read later back to the folder it
   // came from, where its feed's settings reach it again, and reports whether it
-  // moved: not where that folder is gone.
+  // moved. Where that folder is not known or gone, its source tells it: its
+  // feed's folder and section, or Pages.
   boolean release(String doc) {
-    String from = prefs.getString("from:" + doc, null);
-    if (from == null) return false;
     synchronized (RUN) {
-      Uri back = DocumentsContract.buildDocumentUriUsingTree(folder(), from);
-      try (Cursor c = ctx.getContentResolver().query(back, new String[] {Document.COLUMN_DOCUMENT_ID}, null, null, null)) {
-        if (c == null || !c.moveToFirst()) return false;
-      } catch (RuntimeException e) {
+      try {
+        String from = prefs.getString("from:" + doc, null);
+        Uri back = from == null ? null : DocumentsContract.buildDocumentUriUsingTree(folder(), from);
+        if (back != null) {
+          try (Cursor c = ctx.getContentResolver().query(back, new String[] {Document.COLUMN_DOCUMENT_ID}, null, null, null)) {
+            if (c == null || !c.moveToFirst()) back = null;
+          }
+        }
+        if (back == null) back = home(doc);
+        String now = move(doc, back, "its folder");
+        if (now == null) return false;
+        prefs.edit().remove("from:" + now).apply();
+        return true;
+      } catch (IOException | RuntimeException e) {
+        log("put back " + doc + ": " + e);
         return false;
       }
-      String now = move(doc, back, from);
-      if (now == null) return false;
-      prefs.edit().remove("from:" + now).apply();
-      return true;
     }
+  }
+
+  // home returns the folder a book belongs in by its source, made if missing:
+  // the folder of the feed on its site, in its section, else Pages.
+  private Uri home(String doc) throws IOException {
+    String source = prefs.getString("source:" + doc, "");
+    if (!source.isEmpty()) {
+      String host = Feeds.host(source);
+      for (Feeds.Feed f : feeds()) {
+        if (!Feeds.host(f.url).equals(host)) continue;
+        Uri into = dir(null, shelf(f.title));
+        String section = section(source);
+        return section.isEmpty() ? into : dir(into, section);
+      }
+    }
+    return dir(null, "Pages");
+  }
+
+  // read reports whether the book at doc was opened from the app.
+  boolean read(String doc) {
+    return prefs.contains("read:" + doc);
   }
 
   // move moves the book at doc into the folder at to, what is kept for it
@@ -576,7 +603,7 @@ final class Refresher {
   }
 
   // What is kept per book, keyed by its document id.
-  private static final String[] KEPT = {"title:", "source:", "published:", "author:", "from:"};
+  private static final String[] KEPT = {"title:", "source:", "published:", "author:", "from:", "read:"};
 
   // Path words that name no section: a site's own page kinds and languages.
   private static final java.util.Set<String> NOT_SECTIONS = java.util.Set.of(
@@ -768,7 +795,7 @@ final class Refresher {
           if (readable()) {
             active = true;
             try {
-              bind(dir, shelf(title), true, new ArrayList<>());
+              bind(dir, shelf(title), Feeds.host(url), new ArrayList<>());
             } catch (Exception e) {
               log("book the pages of " + title + ": " + e);
             } finally {
@@ -792,10 +819,10 @@ final class Refresher {
   }
 
   // copy puts a finished book into the shelf folder, inside its section's folder
-  // when sections is set and its address names one, and keeps its real title
+  // when it is on the feed's site and its address names one, and keeps its real title
   // from the stage's sidecar, since the file name lost its accents.
   // It reports false where the same article is already there.
-  private boolean copy(File book, String shelf, boolean sections) throws IOException {
+  private boolean copy(File book, String shelf, String site) throws IOException {
     String title = "", source = "", published = "", author = "";
     File side = new File(new File(book.getParentFile(), ".ink"), book.getName() + ".json");
     try (InputStream in = new FileInputStream(side)) {
@@ -807,7 +834,9 @@ final class Refresher {
     } catch (IOException | org.json.JSONException e) {
       log("no sidecar for " + book.getName() + ": " + e);
     }
-    String section = sections ? section(source) : "";
+    // A section only from the feed's own site: an aggregator's links name
+    // other sites' paths, a user's name on GitHub for one.
+    String section = site != null && Feeds.host(source).equals(site) ? section(source) : "";
     Uri into = dir(null, shelf);
     if (!section.isEmpty()) into = dir(into, section);
     ContentResolver cr = ctx.getContentResolver();

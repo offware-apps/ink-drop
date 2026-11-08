@@ -104,8 +104,10 @@ the e-ink screen leaves no ghosts.
 - A chip per folder, newest first, after All, `Pages` and `Laptop`: the feeds
   shown two rows deep, the rest a tap away on the Feeds tab. Under a feed's
   chip, a chip per section with its count, `Politique 12`, the fullest first.
-- A Today chip keeps the list to the last 24 hours. The ≡ at the right of the
-  page bar packs each book onto one line at the same type size: the mark and initials,
+- A Today chip keeps the list to the last 24 hours, and an Unread chip to the
+  books never opened from the app. An unread title is bold; a book opened shows
+  a ✓ and a regular grey title.
+  The ≡ at the right of that line packs each book onto one line at the same type size: the mark and initials,
   the title, then the feed, date and author; ☰ spreads them again.
 - Each book shows a mark for its section, 🏛 for politics or 🔬 for science,
   and its feed's initials in a box; the feed, the section, when the article was
@@ -114,11 +116,12 @@ the e-ink screen leaves no ghosts.
   last left the app and has not been opened from it.
 - Later sets a book aside in `Read later` and ☆ moves it to `Favourites`: two
   folders of their own, which no feed's settings reach. Done, or ★ on a
-  favourite, puts the book back in the folder it came from.
-- A tap opens the book in the tablet's reader. A long press deletes it after
-  asking, except in `Laptop`, whose books the laptop's sync owns. A long press
-  on a folder's chip deletes the folder's books after asking, `Laptop` and
-  `Pages` aside.
+  favourite, puts the book back in the folder it came from, else in its feed's
+  folder by its address, or in `Pages`.
+- A tap opens the book in the tablet's reader, and ✕ deletes it after asking,
+  except in `Laptop`, whose books the laptop's sync owns. A long press on a
+  folder's chip deletes the folder's books after asking, `Laptop` and `Pages`
+  aside.
 
 To save a page, share it to ink-drop from the browser: it becomes a book in
 `Pages`, its article alone, its pictures inside it. A share made while a
